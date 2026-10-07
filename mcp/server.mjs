@@ -41,7 +41,7 @@ async function base() {
     fallback ||= port;
   }
   if (fallback) return `http://127.0.0.1:${fallback}`;
-  throw new Error('AnimStudio is not running. Start it with start.bat and keep the browser tab open.');
+  throw new Error('AnimStudio is not running. Start it (start.bat, or npm start) and keep its browser tab open.');
 }
 
 const bone = 'Anatomical bone id from get_rig (e.g. "thigh.L", "calf.R", "upperarm.L", "forearm.R", "hand.L", "foot.R", "spine.0", "chest", "neck.0", "head", "hips", "clavicle.L"). Names like "left thigh" also work.';
@@ -172,7 +172,7 @@ async function call(cmd, args, timeout) {
   try {
     res = await fetch(`${url}/api/bridge/call`, { method: 'POST', body: JSON.stringify({ cmd, args, timeout }), headers: { 'Content-Type': 'application/json' } });
   } catch {
-    throw new Error('AnimStudio server is not running. Start AnimStudio (start.bat) and open it in the browser.');
+    throw new Error('AnimStudio server is not running. Start AnimStudio (start.bat, or npm start) and open it in the browser.');
   }
   const j = await res.json().catch(() => ({}));
   if (!j.ok) throw new Error(j.error || `HTTP ${res.status}`);

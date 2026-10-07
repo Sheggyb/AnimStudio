@@ -236,15 +236,46 @@ Characters that hold rifles, bazookas and so on get three **socket bones**. Sock
 
 ## 🤖 Control AnimStudio with AI (MCP)
 
-AnimStudio includes an MCP server (`mcp/server.mjs`, no extra installs). An AI assistant can then drive the **open** app live; you see every change in the viewport.
+[MCP](https://modelcontextprotocol.io) (Model Context Protocol) lets an AI assistant use tools on your computer. AnimStudio includes an MCP server (`mcp/server.mjs`, nothing extra to install), so an assistant such as Claude can drive the **open** app live. You watch every change happen in the viewport, and undo works as usual.
 
-**Setup**
-- **Claude Code:** the repository's `.mcp.json` registers it. Start Claude Code in the AnimStudio folder and approve "animstudio" (or run `/mcp`).
-- **Claude Desktop:** add this to `claude_desktop_config.json`, with the full path to your AnimStudio folder:
-  ```json
-  { "mcpServers": { "animstudio": { "command": "node", "args": ["/path/to/AnimStudio/mcp/server.mjs"] } } }
-  ```
-- AnimStudio must be running (`start.bat`) with its browser tab open.
+How it fits together: your AI app starts `mcp/server.mjs` → that talks to the AnimStudio server on your computer → which passes the commands to the AnimStudio tab in your browser. Everything stays on your computer, apart from what your AI app itself sends to its AI service.
+
+### Setup
+
+First start AnimStudio (`start.bat` or `npm start`) and keep its browser tab open. Then connect your AI app.
+
+**Claude Code** (the easiest: the repository already contains the settings in `.mcp.json`)
+1. Open a terminal in the AnimStudio folder and run `claude`.
+2. When it asks about the *animstudio* MCP server, approve it. (Later: `/mcp` shows its status.)
+
+**Claude Desktop**
+1. In Claude Desktop: **Settings › Developer › Edit Config**. This opens `claude_desktop_config.json`, found at:
+   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+2. Add AnimStudio, with the **full path** to your AnimStudio folder:
+   ```json
+   { "mcpServers": { "animstudio": { "command": "node", "args": ["C:/Users/you/AnimStudio/mcp/server.mjs"] } } }
+   ```
+   On Windows, use forward slashes (`C:/Users/...`) or double backslashes (`C:\\Users\\...`). If the file already has an `mcpServers` section, add the `"animstudio": {…}` entry inside it.
+3. Quit Claude Desktop completely (also from the system tray) and start it again.
+
+**Other MCP apps** (Cursor, VS Code, …) use the same server: a *stdio* server with command `node` and argument `<your AnimStudio folder>/mcp/server.mjs`. For example:
+- Cursor (`.cursor/mcp.json`): the same JSON as Claude Desktop.
+- VS Code (`.vscode/mcp.json`): `{ "servers": { "animstudio": { "type": "stdio", "command": "node", "args": ["<path>/mcp/server.mjs"] } } }`
+
+### Check that it works
+
+Ask the assistant: *"What is open in AnimStudio?"* It should call the `status` tool and describe the character and clip in your tab.
+
+### If it doesn't connect
+
+| Problem | Fix |
+|---|---|
+| "AnimStudio is not running" | Start AnimStudio and keep its tab open. The tab is what carries out the commands. |
+| The tools don't show up | Restart your AI app after changing its config. Check the path to `mcp/server.mjs`, and that `node --version` works in a terminal (Node 18 or newer). |
+| Commands go to the wrong window | Run only one AnimStudio. A second `start.bat` starts a second server on the next port (5174…). Close the extra console window and browser tab. |
+| AnimStudio runs on an unusual port | Set the environment variable `ANIMSTUDIO_PORT` for the MCP server, e.g. `"env": { "ANIMSTUDIO_PORT": "5180" }` next to `"args"` in the config. |
+| You updated AnimStudio | Press F5 in the AnimStudio tab, and restart your AI app if new tools were added. |
 
 **What the AI can do** (42 tools)
 - **Create brand-new motion:** `generate_motion` builds walk, run, jog, sprint, sneak, march, limp and idle cycles from scratch, with parameters for stride, knee lift, arm swing, bounce, lean, tempo and more. `regenerate_motion` tweaks them ("more knee lift").
