@@ -291,7 +291,7 @@ export async function addAnimations(files = null) {
           b.set(`Saving ${name}…`);
           await api.savePack(name, new Blob([buffer]));
           taken.add(name.toLowerCase());
-          added.push(`${name} (${info.clips.length} moves)`);
+          added.push(`${name.replace(/\.glb$/i, '')} (${info.clips.filter((c) => c.duration > 0 && !/t_?pose/i.test(c.name)).length} moves)`);
           continue;
         }
       }

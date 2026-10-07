@@ -94,8 +94,9 @@ export function keyingThroughLayers() {
   }
 }
 
-export function twoBoneIKReachesTargets() {
-  const m = model();
+export async function twoBoneIKReachesTargets() {
+  // On a pack's skeleton when there is one, else on AnimStudio's standard skeleton.
+  const m = exists(PACK) ? model() : { rig: (await import('../src/core/standard.js')).standardRig() };
   const sk = makeScratchSkeleton(m.rig);
   for (const limb of ['hand.L', 'hand.R', 'foot.L', 'foot.R']) {
     const ik = m.rig.ik[limb];
@@ -402,7 +403,8 @@ export async function generatedMotionsAreAnatomical() {
   const { generateMotion, MOTION_TYPES } = await import('../src/core/gait.js');
   const { resolveBone } = await import('../src/core/anatomy.js');
   const S = await import('../src/core/standard.js');
-  for (const rig of [...rigFiles().map((f) => model(f).rig), S.standardRig()]) {
+  const std = S.standardRig();
+  for (const rig of [...rigFiles().map((f) => model(f).rig), std]) {
     const f = rig.forwardAxis;
     const fs = rig.forwardSign;
     for (const type of MOTION_TYPES) {
@@ -425,6 +427,5 @@ export async function generatedMotionsAreAnatomical() {
     };
     assert(kneeAngle('L') > kneeAngle('R'), 'swing knee bends');
   }
-  const m = model();
-  assert(resolveBone(m.rig, 'left thigh') === m.rig.byKind.get('thigh.L') && resolveBone(m.rig, 'R Forearm') === m.rig.byKind.get('forearm.R') && resolveBone(m.rig, 'head') === m.rig.special.head, 'bone names resolve');
+  assert(resolveBone(std, 'left thigh') === std.byKind.get('thigh.L') && resolveBone(std, 'R Forearm') === std.byKind.get('forearm.R') && resolveBone(std, 'head') === std.special.head, 'bone names resolve');
 }
