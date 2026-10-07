@@ -13,6 +13,8 @@ It works with any glTF/GLB file:
 
 ## Start
 
+> **Using an AI coding assistant?** Paste the prompt from [INSTALL-WITH-AI.md](INSTALL-WITH-AI.md) into it (Claude Code, Cursor, VS Code…). It installs AnimStudio, starts it and connects it to the AI over MCP, checking each step.
+
 1. Install **Node.js 18 or newer** (https://nodejs.org).
 2. Get AnimStudio: `git clone` this repository (or download it as a ZIP and unpack it).
 3. Start it:
@@ -241,6 +243,8 @@ Characters that hold rifles, bazookas and so on get three **socket bones**. Sock
 How it fits together: your AI app starts `mcp/server.mjs` → that talks to the AnimStudio server on your computer → which passes the commands to the AnimStudio tab in your browser. Everything stays on your computer, apart from what your AI app itself sends to its AI service.
 
 ### Setup
+
+**Shortcut:** paste the prompt from [INSTALL-WITH-AI.md](INSTALL-WITH-AI.md) into your AI assistant and it does all of this for you.
 
 First start AnimStudio (`start.bat` or `npm start`) and keep its browser tab open. Then connect your AI app.
 
