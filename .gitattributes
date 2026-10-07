@@ -1,0 +1,5 @@
+# Consistent line endings for everyone; Windows batch files need CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.glb binary
+*.fbx binary

@@ -1,0 +1,18 @@
+{
+  "name": "animstudio",
+  "version": "1.0.0",
+  "description": "Character animation studio in the browser: rig your characters, start from animation packs (Mixamo, Quaternius…), make the moves your own and export game-ready GLB.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.cjs",
+    "test": "node tests/run.js"
+  },
+  "dependencies": {
+    "three": "^0.186.0"
+  }
+}

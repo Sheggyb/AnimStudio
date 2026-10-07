@@ -1,0 +1,26 @@
+# Dependencies (npm install / start.bat)
+node_modules/
+
+# Your own content. AnimStudio ships without characters or animations: everyone brings their
+# own, and they stay on their computer.
+models/
+exports/
+projects/
+library/
+props/
+videos/
+mixamo/
+animations/*
+!animations/README.md
+
+# Third-party runtime for the parked "motion from video" feature (see README › Known limits)
+vendor/
+
+# Local state and notes
+.port
+*.tmp
+CHANGELOG.local.md
+
+# Personal tools that automate a third-party site; not part of AnimStudio
+tools/mixamo-download.js
+tools/mixamo-collect.mjs
