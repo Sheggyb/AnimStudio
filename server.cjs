@@ -307,9 +307,22 @@ async function api(req, res, url) {
   return json(res, { error: 'Unknown API' }, 404);
 }
 
+/**
+ * Only AnimStudio's own page and local tools (the MCP server, scripts: no Origin header) may use
+ * the server. A website open in another tab can't make the browser send requests here (CSRF),
+ * and a hostile domain name pointed at 127.0.0.1 is refused (DNS rebinding).
+ */
+function trusted(req) {
+  const host = String(req.headers.host || '').toLowerCase();
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) return false;
+  const origin = req.headers.origin;
+  return origin === undefined || origin === `http://${host}`;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
+  if (!trusted(req)) return send(res, 403, 'Forbidden: AnimStudio only answers its own page and local tools.');
   try {
     if (p.startsWith('/api/')) return await api(req, res, url);
 

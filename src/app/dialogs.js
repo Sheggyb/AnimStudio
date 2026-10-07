@@ -648,7 +648,7 @@ const ago = (ms) => {
   if (s < 7 * 86400) return `${Math.round(s / 86400)} d ago`;
   return new Date(ms).toLocaleDateString();
 };
-// "Meshy_AI_Grinblade_Bot_1004210611_texture_rigged.glb" -> "Grinblade Bot" (file names stay as they are)
+// "Meshy_AI_Space_Knight_1004210611_texture_rigged.glb" -> "Space Knight" (file names stay as they are)
 const prettyModel = (n) =>
   n
     .replace(/\.(glb|gltf|fbx|animproj\.json)$/i, '')
