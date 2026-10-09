@@ -11,11 +11,12 @@ const DEG = Math.PI / 180;
 /**
  * @param model   loaded model record
  * @param clips   clips to include
- * @param opts    { fps, reduce (deg, 0 = exact), includeMesh, onlyVisible, fillRest, inPlace }
+ * @param opts    { fps, reduce (deg, 0 = exact), includeMesh, onlyVisible, fillRest, inPlace,
+ *                  feetAtOrigin: move the character so its feet are at y = 0 (default true) }
  * @returns ArrayBuffer (GLB)
  */
 export async function exportGLB(model, clips, opts = {}) {
-  const { fps = 30, reduce = 0, includeMesh = true, onlyVisible = true, fillRest = true, inPlace = false } = opts;
+  const { fps = 30, reduce = 0, includeMesh = true, onlyVisible = true, fillRest = true, inPlace = false, feetAtOrigin = true } = opts;
   const rig = model.rig;
   const posTol = rig.height * 0.0005;
   const reducer = (ch, tolDeg) => reduceChannel(ch, ch.type === 'rot' ? tolDeg * DEG : posTol * (tolDeg / 0.5));
@@ -71,9 +72,15 @@ export async function exportGLB(model, clips, opts = {}) {
     meshes.forEach((m) => m.parent.remove(m));
     scene.add(exportRoot);
   }
+  // Engines stand a character on its origin. Many models (e.g. Meshy) have it in the middle of
+  // the body, so they would sink into or hover above the floor: put the feet at y = 0.
+  exportRoot.updateMatrix();
+  const lift = feetAtOrigin ? -new THREE.Vector3(0, rig.ground, 0).applyMatrix4(exportRoot.matrix).y : 0; // through the root's own scale/offset
+  exportRoot.position.y += lift;
   try {
     return await new GLTFExporter().parseAsync(scene, { binary: true, trs: true, onlyVisible, animations: threeClips });
   } finally {
+    exportRoot.position.y -= lift;
     if (includeMesh && prevParent) prevParent.add(model.root);
     model.parts.forEach((p, i) => (p.mesh.material = swapped[i]));
   }

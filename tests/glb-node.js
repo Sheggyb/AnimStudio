@@ -23,7 +23,8 @@ export function loadGlb(file) {
     return new Float32Array(bin.slice(off, off + a.count * comps * 4));
   };
 
-  const joints = new Set(json.skins?.[0]?.joints || []);
+  // Every skin's joints (a character can be split into skins that each use part of the skeleton).
+  const joints = new Set((json.skins || []).flatMap((sk) => sk.joints));
   const objs = json.nodes.map((nd, i) => {
     const o = joints.has(i) ? new THREE.Bone() : new THREE.Object3D();
     o.name = nd.name || `node_${i}`;
@@ -36,14 +37,18 @@ export function loadGlb(file) {
   const scene = new THREE.Group();
   (json.scenes[json.scene || 0].nodes || []).forEach((i) => scene.add(objs[i]));
   scene.updateMatrixWorld(true);
-  const bones = (json.skins?.[0]?.joints || []).map((i) => objs[i]);
+  const bones = [...joints].map((i) => objs[i]);
 
+  // Mesh bounds in model space (through each mesh node's transform; at rest a skinned mesh
+  // sits where its node puts it).
   const box = new THREE.Box3();
-  for (const m of json.meshes || [])
-    for (const p of m.primitives) {
+  json.nodes.forEach((nd, i) => {
+    if (nd.mesh === undefined) return;
+    for (const p of json.meshes[nd.mesh].primitives) {
       const a = json.accessors[p.attributes.POSITION];
-      if (a.min && a.max) box.union(new THREE.Box3(new THREE.Vector3(...a.min), new THREE.Vector3(...a.max)));
+      if (a.min && a.max) box.union(new THREE.Box3(new THREE.Vector3(...a.min), new THREE.Vector3(...a.max)).applyMatrix4(objs[i].matrixWorld));
     }
+  });
 
   const PROP = { rotation: 'quaternion', translation: 'position', scale: 'scale' };
   const clips = (json.animations || []).map((an, k) => {

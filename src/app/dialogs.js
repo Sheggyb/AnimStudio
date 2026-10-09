@@ -32,6 +32,8 @@ const baseName = () => app.model.name.replace(/\.(glb|gltf)$/i, '');
 export async function exportDialog({ only = null } = {}) {
   if (!app.model) return toast('Open a model first', 'err');
   const checked = app.clips.filter((c) => app.isExported(c.id));
+  const feet = app.rig.ground; // height of the feet relative to the model's origin
+  const offText = Math.abs(feet) > app.rig.height * 0.01 ? ` (this model's feet are ${Math.abs(feet).toFixed(2)} ${feet > 0 ? 'above' : 'below'} its origin)` : '';
   const v = await formDialog({
     title: 'Export GLB',
     intro: 'GLB (binary glTF) imports directly into Unity, Unreal, Godot, Blender and web engines. Layers and smooth curves are baked to standard linear keys.',
@@ -69,6 +71,7 @@ export async function exportDialog({ only = null } = {}) {
       },
       { key: 'fillRest', type: 'checkbox', text: 'Key every animated bone in every clip (prevents poses leaking between clips in engines)', value: true, full: true },
       { key: 'inPlace', type: 'checkbox', text: 'Remove root motion (in place)', value: false, full: true },
+      { key: 'feetAtOrigin', type: 'checkbox', text: `Feet at ground level, y = 0, so the character stands on the floor in your engine${offText}`, value: true, full: true },
       { key: 'onlyVisible', type: 'checkbox', text: 'Only visible mesh parts', value: true, full: true },
       { key: 'sidecar', type: 'checkbox', text: 'Also write <name>.events.json (loop flags + events for game code)', value: true, full: true },
       { key: 'split', type: 'checkbox', text: 'One file per clip', value: false, full: true },
@@ -80,7 +83,7 @@ export async function exportDialog({ only = null } = {}) {
   if (!clips.length) return toast('No clips to export', 'err');
   let name = v.name.trim() || `${baseName()}_anim.glb`;
   if (!/\.glb$/i.test(name)) name += '.glb';
-  const opts = { fps: +v.fps, reduce: +v.reduce, includeMesh: v.content === 'model', onlyVisible: v.onlyVisible, fillRest: v.fillRest, inPlace: v.inPlace };
+  const opts = { fps: +v.fps, reduce: +v.reduce, includeMesh: v.content === 'model', onlyVisible: v.onlyVisible, fillRest: v.fillRest, inPlace: v.inPlace, feetAtOrigin: v.feetAtOrigin };
   const jobs = v.split ? clips.map((c) => ({ clips: [c], name: name.replace(/\.glb$/i, `_${c.name.replace(/[^\w.-]+/g, '_')}.glb`) })) : [{ clips, name }];
   const b = busy('Exporting…');
   const results = [];

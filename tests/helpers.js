@@ -99,3 +99,32 @@ export function tPoseCharacter() {
   const rig = analyzeRig(scene, mesh.skeleton.bones, new THREE.Box3().setFromObject(scene));
   return { scene, mesh, rig };
 }
+
+/** A small Mixamo-named skeleton (the hips are its root bone, as on every Mixamo rig). */
+export function mixamoRig() {
+  const P = {
+    'mixamorig:Hips': [null, 0, 1, 0], 'mixamorig:Spine': ['mixamorig:Hips', 0, 0.1, 0], 'mixamorig:Spine1': ['mixamorig:Spine', 0, 0.1, 0],
+    'mixamorig:Spine2': ['mixamorig:Spine1', 0, 0.1, 0], 'mixamorig:Neck': ['mixamorig:Spine2', 0, 0.15, 0], 'mixamorig:Head': ['mixamorig:Neck', 0, 0.1, 0],
+    'mixamorig:HeadTop_End': ['mixamorig:Head', 0, 0.2, 0],
+  };
+  for (const [s, x] of [['Left', 1], ['Right', -1]]) {
+    Object.assign(P, {
+      [`mixamorig:${s}Shoulder`]: ['mixamorig:Spine2', 0.05 * x, 0.1, 0], [`mixamorig:${s}Arm`]: [`mixamorig:${s}Shoulder`, 0.12 * x, 0, 0],
+      [`mixamorig:${s}ForeArm`]: [`mixamorig:${s}Arm`, 0.25 * x, 0, 0], [`mixamorig:${s}Hand`]: [`mixamorig:${s}ForeArm`, 0.25 * x, 0, 0],
+      [`mixamorig:${s}HandIndex1`]: [`mixamorig:${s}Hand`, 0.08 * x, 0, 0.02],
+      [`mixamorig:${s}UpLeg`]: ['mixamorig:Hips', 0.1 * x, -0.05, 0], [`mixamorig:${s}Leg`]: [`mixamorig:${s}UpLeg`, 0, -0.45, 0],
+      [`mixamorig:${s}Foot`]: [`mixamorig:${s}Leg`, 0, -0.42, 0], [`mixamorig:${s}ToeBase`]: [`mixamorig:${s}Foot`, 0, -0.06, 0.12],
+    });
+  }
+  const root = new THREE.Group();
+  const bones = {};
+  for (const [n, [p, x, y, z]] of Object.entries(P)) {
+    const b = new THREE.Bone();
+    b.name = n;
+    b.position.set(x, y, z);
+    bones[n] = b;
+  }
+  for (const [n, [p]] of Object.entries(P)) (p ? bones[p] : root).add(bones[n]);
+  root.updateMatrixWorld(true);
+  return analyzeRig(root, Object.values(bones));
+}

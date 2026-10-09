@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import path from 'node:path';
-import { assert, near, quatNear, model, rigFiles, exists, needs, ROOT, PACK, PACK2, MIXAMO } from './helpers.js';
+import { assert, near, quatNear, model, rigFiles, exists, needs, mixamoRig, ROOT, PACK, PACK2, MIXAMO } from './helpers.js';
 import { loadGlb } from './glb-node.js';
 import { makeChannel, setKey, sample, findKey, retimeKeys, removeKeys, LINEAR, SMOOTH, EASE, STEP, frameTimes } from '../src/core/channel.js';
 import { makeClip, makeLayer, cloneClip, bakeToThree, clipFromThree, serializeClip, deserializeClip, getTrack } from '../src/core/clip.js';
@@ -299,31 +299,7 @@ export function easeTimingKeepsEnds() {
 }
 
 export function mixamoNamesAreRecognised() {
-  const P = {
-    'mixamorig:Hips': [null, 0, 1, 0], 'mixamorig:Spine': ['mixamorig:Hips', 0, 0.1, 0], 'mixamorig:Spine1': ['mixamorig:Spine', 0, 0.1, 0],
-    'mixamorig:Spine2': ['mixamorig:Spine1', 0, 0.1, 0], 'mixamorig:Neck': ['mixamorig:Spine2', 0, 0.15, 0], 'mixamorig:Head': ['mixamorig:Neck', 0, 0.1, 0],
-    'mixamorig:HeadTop_End': ['mixamorig:Head', 0, 0.2, 0],
-  };
-  for (const [s, x] of [['Left', 1], ['Right', -1]]) {
-    Object.assign(P, {
-      [`mixamorig:${s}Shoulder`]: ['mixamorig:Spine2', 0.05 * x, 0.1, 0], [`mixamorig:${s}Arm`]: [`mixamorig:${s}Shoulder`, 0.12 * x, 0, 0],
-      [`mixamorig:${s}ForeArm`]: [`mixamorig:${s}Arm`, 0.25 * x, 0, 0], [`mixamorig:${s}Hand`]: [`mixamorig:${s}ForeArm`, 0.25 * x, 0, 0],
-      [`mixamorig:${s}HandIndex1`]: [`mixamorig:${s}Hand`, 0.08 * x, 0, 0.02],
-      [`mixamorig:${s}UpLeg`]: ['mixamorig:Hips', 0.1 * x, -0.05, 0], [`mixamorig:${s}Leg`]: [`mixamorig:${s}UpLeg`, 0, -0.45, 0],
-      [`mixamorig:${s}Foot`]: [`mixamorig:${s}Leg`, 0, -0.42, 0], [`mixamorig:${s}ToeBase`]: [`mixamorig:${s}Foot`, 0, -0.06, 0.12],
-    });
-  }
-  const root = new THREE.Group();
-  const bones = {};
-  for (const [n, [p, x, y, z]] of Object.entries(P)) {
-    const b = new THREE.Bone();
-    b.name = n;
-    b.position.set(x, y, z);
-    bones[n] = b;
-  }
-  for (const [n, [p]] of Object.entries(P)) (p ? bones[p] : root).add(bones[n]);
-  root.updateMatrixWorld(true);
-  const rig = analyzeRig(root, Object.values(bones));
+  const rig = mixamoRig();
   assert(rig.humanoid && rig.namedRig, 'humanoid from names');
   for (const [k, n] of [['upperarm.L', 'mixamorig:LeftArm'], ['calf.R', 'mixamorig:RightLeg'], ['chest', 'mixamorig:Spine2'], ['toe.L', 'mixamorig:LeftToeBase'], ['finger.L.1.0', 'mixamorig:LeftHandIndex1']])
     assert(rig.names[rig.byKind.get(k)] === n, `${k} -> ${rig.names[rig.byKind.get(k)]}`);

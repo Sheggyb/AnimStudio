@@ -4,6 +4,7 @@
 import { makeClip, getTrack } from './clip.js';
 import { setKey, SMOOTH, frameTimes } from './channel.js';
 import { anatomicalLocal, bodyOffsetLocal } from './anatomy.js';
+import { evalWorld } from './evaluate.js';
 
 const TAU = Math.PI * 2;
 
@@ -105,7 +106,29 @@ export function generateMotion(rig, type = 'walk', p = {}) {
       put(K(`clavicle.${s}`), t, { swing: -Math.cos(a) * q.armSwing * 0.08 });
     }
   }
+  groundFeet(clip, rig);
   return clip;
+}
+
+/**
+ * Raise or lower the whole cycle so the lowest foot touches the ground at its lowest moment.
+ * The hip height above is an estimate (crouch, bounce, knee bend on this rig's proportions);
+ * without this, a sneak sinks into the floor and a march hovers. Bounce and flight are kept.
+ */
+function groundFeet(clip, rig) {
+  const hips = rig.special.hips;
+  const ch = hips >= 0 ? clip.layers[0].tracks[rig.names[hips]]?.pos : null;
+  const feet = ['foot.L', 'foot.R', 'toe.L', 'toe.R'].map((k) => rig.byKind.get(k)).filter((i) => i >= 0);
+  if (!ch || !feet.length) return;
+  const rest = Math.min(...feet.map((i) => rig.restWorld.p[i].y));
+  let low = Infinity;
+  const w = { lq: [], lp: [], wq: [], wp: [] };
+  for (let f = 0; f <= Math.round(clip.duration * 30); f++) {
+    evalWorld(clip, Math.min(f / 30, clip.duration), rig, w);
+    low = Math.min(low, ...feet.map((i) => w.wp[i].y));
+  }
+  const d = bodyOffsetLocal(rig, hips, [0, rest - low, 0]).sub(rig.rest[hips].p); // straight up, in the hips' parent space
+  for (let k = 0; k < ch.times.length; k++) for (let c = 0; c < 3; c++) ch.values[k * 3 + c] += d.getComponent(c);
 }
 
 /**

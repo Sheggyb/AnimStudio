@@ -97,7 +97,21 @@ export function chooseMode(src, dst) {
 /** Model-space rotation of bone i's parent at rest. */
 const parentRestQ = (rig, i) => (rig.parent[i] < 0 ? rig.baseQ : rig.restWorld.q[rig.parent[i]]).clone();
 
-export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, fingers = true, hipsScale = 'auto', tolerance = 0.05, name = null } = {}) {
+/** Height of the thigh joints above the ground at rest (0 without legs). */
+function legHeight(rig) {
+  const t = ['thigh.L', 'thigh.R'].map((k) => rig.byKind.get(k)).filter((i) => i >= 0);
+  return t.length ? t.reduce((s, i) => s + rig.restWorld.p[i].y, 0) / t.length - rig.ground : 0;
+}
+/** Foot and toe joints: the parts that touch the ground. */
+const feetOf = (rig) => ['foot.L', 'foot.R', 'toe.L', 'toe.R'].map((k) => rig.byKind.get(k)).filter((i) => i >= 0);
+
+/**
+ * Retarget a clip onto another skeleton. Limbs follow the source's directions (or rotations on
+ * matching skeletons). Hip movement is scaled by leg length, and with `keepContact` the lowest
+ * foot stays as high above the ground as in the source (scaled), frame by frame, so a move
+ * neither floats nor sinks on a character whose hip bone or proportions differ.
+ */
+export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, fingers = true, hipsScale = 'auto', keepContact = true, tolerance = 0.05, name = null } = {}) {
   if (mode === 'auto') mode = chooseMode(src, dst);
   const map = buildBoneMap(src, dst, { fingers });
   const n = dst.bones.length;
@@ -124,10 +138,29 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
   const hipsD = dst.special.hips;
   let scale = 1;
   if (hipsScale === 'auto' && hipsS >= 0 && hipsD >= 0) {
+    // Leg length when both have legs: hip bones sit at different heights on different skeletons
+    // (Mixamo's well above the thighs, others level with them), so hip height misjudges it.
+    const ls = legHeight(src),
+      ld = legHeight(dst);
     const hs = src.restWorld.p[hipsS].y - src.ground;
     const hd = dst.restWorld.p[hipsD].y - dst.ground;
-    if (hs > 1e-4) scale = hd / hs;
+    if (ls > 1e-4 && ld > 1e-4) scale = ld / ls;
+    else if (hs > 1e-4) scale = hd / hs;
   } else if (typeof hipsScale === 'number') scale = hipsScale;
+
+  // Ground contact: the lowest foot's height above the ground, source vs target, per frame.
+  const feetS = feetOf(src),
+    feetD = feetOf(dst);
+  const contact = keepContact && hipsS >= 0 && hipsD >= 0 && feetS.length && feetD.length;
+  const lowS = contact ? Math.min(...feetS.map((i) => src.restWorld.p[i].y)) : 0;
+  const lowD = contact ? Math.min(...feetD.map((i) => dst.restWorld.p[i].y)) : 0;
+  const dP = contact ? Array.from({ length: n }, () => new THREE.Vector3()) : null;
+  // On some skeletons (Mixamo) the hips are the root bone; others have a root above the hips.
+  // A target without its own root gets the source's whole hip motion on its hips.
+  const hipsIsRootD = hipsD >= 0 && (dst.special.root === hipsD || dst.special.root == null || dst.special.root < 0);
+  const rootD = hipsIsRootD ? -1 : dst.special.root;
+  const lp = new THREE.Vector3();
+  let contactUsed = false;
 
   const rot = Array.from({ length: n }, () => new Float32Array(times.length * 4));
   const hipsPos = new Float32Array(times.length * 3);
@@ -151,14 +184,35 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
     // Hips & root translation: offset from rest, scaled.
     for (const [di, si, out] of [
       [hipsD, hipsS, hipsPos],
-      [dst.special.root, src.special.root, rootPos],
+      [rootD, src.special.root, rootPos],
     ]) {
       if (di < 0 || si < 0 || di == null || si == null) continue;
       // Offset from rest, taken through model space: skeletons can store it on different axes
       // (a Blender Z-up armature vs a Y-up game rig), so "down" must stay down.
-      v.copy(ws.lp[si]).sub(src.rest[si].p).applyQuaternion(parentRestQ(src, si)).multiplyScalar(scale);
+      if (di === hipsD && hipsIsRootD) v.copy(ws.wp[si]).sub(src.restWorld.p[si]).multiplyScalar(scale); // all the source's hip motion, its root's included
+      else v.copy(ws.lp[si]).sub(src.rest[si].p).applyQuaternion(parentRestQ(src, si)).multiplyScalar(scale);
       v.applyQuaternion(parentRestQ(dst, di).invert()).add(dst.rest[di].p);
       v.toArray(out, k * 3);
+    }
+    if (contact) {
+      // Target pose in model space, then lift or lower the hips so the lowest foot is where
+      // the source's is (scaled). Moving the hips moves both feet, so the motion stays smooth.
+      for (const i of dst.order) {
+        const p = dst.parent[i];
+        if (i === hipsD) lp.fromArray(hipsPos, k * 3);
+        else if (i === rootD && src.special.root >= 0) lp.fromArray(rootPos, k * 3);
+        else lp.copy(dst.rest[i].p);
+        dP[i].copy(lp).applyQuaternion(p < 0 ? dst.baseQ : dW[p]).add(p < 0 ? dst.baseP : dP[p]);
+      }
+      const want = (Math.min(...feetS.map((i) => ws.wp[i].y)) - lowS) * scale;
+      const have = Math.min(...feetD.map((i) => dP[i].y)) - lowD;
+      const dy = want - have;
+      if (Math.abs(dy) > 1e-5 * dst.height) {
+        const p = dst.parent[hipsD];
+        v.set(0, dy, 0).applyQuaternion((p < 0 ? dst.baseQ : dW[p]).clone().invert());
+        for (let c = 0; c < 3; c++) hipsPos[k * 3 + c] += v.getComponent(c);
+        contactUsed = true;
+      }
     }
   });
 
@@ -177,13 +231,14 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
     for (let k = 0; k < ch.times.length && !moving; k++) moving = 1 - Math.abs(restCheck.fromArray(ch.values, k * 4).dot(dst.rest[i].q)) > 1e-7;
     if (moving) (base.tracks[dst.names[i]] ||= {}).rot = ch;
   }
+  const movesPos = (i) => i != null && i >= 0 && srcClip.layers.some((l) => l.tracks[src.names[i]]?.pos);
   for (const [di, out, srcIdx] of [
     [hipsD, hipsPos, hipsS],
-    [dst.special.root, rootPos, src.special.root],
+    [rootD, rootPos, src.special.root],
   ]) {
     if (di == null || di < 0 || srcIdx == null || srcIdx < 0) continue;
-    const srcHasPos = srcClip.layers.some((l) => l.tracks[src.names[srcIdx]]?.pos);
-    if (!srcHasPos) continue;
+    const srcHasPos = movesPos(srcIdx) || (di === hipsD && hipsIsRootD && movesPos(src.special.root));
+    if (!srcHasPos && !(di === hipsD && contactUsed)) continue;
     const ch = makeChannel('pos', times, out);
     if (tolerance > 0) reduceChannel(ch, 0.0005);
     (base.tracks[dst.names[di]] ||= {}).pos = ch;
