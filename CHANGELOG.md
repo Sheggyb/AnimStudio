@@ -4,6 +4,15 @@ Newest first. "Press F5" after an update means the browser tab must reload to ru
 
 ---
 
+## 1.1.0 — 2026-10-09 — no more floating characters
+
+Restart AnimStudio (`start.bat` / `npm start`) and press F5. Moves added before this version keep their old motion: add them again from ✦ Moves to get the fix.
+
+- **Mixamo-rigged characters no longer float.** On these skeletons the hips are the root bone, and moves from skeletons with a separate root bone (Quaternius and many others) lost all their hip motion: the character stood at full height and hovered over the floor.
+- **Feet keep their ground contact** when a move goes onto another character. Hip movement is scaled by leg length (hip bones sit at different heights on different skeletons), and the lowest foot stays as high above the ground as in the original, frame by frame. Feet used to sink up to ~10 cm or hover up to ~20 cm.
+- **Generated gaits touch the ground:** the sneak sank about 15 cm into the floor, and the march hovered.
+- **Export: Feet at ground level (y = 0)**, on by default. Engines stand a character on its origin, and many models (e.g. Meshy) have it in the middle of the body.
+
 ## 1.0.0 — 2026-10-07 — first public release
 
 AnimStudio is free and open source under the AGPL-3.0. It ships without characters or animations: you bring your own.

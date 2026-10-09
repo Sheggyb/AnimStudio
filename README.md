@@ -204,7 +204,8 @@ Rigs with standard bone names (Mixamo `mixamorig:LeftArm`, Unreal `upperarm_l`, 
 | The head stretches, or parts of it (helmet sides, bandana, hair) swing with the arms | The skin was made by an older version, or the head option was off | **Rig tab › ✎ Edit skeleton → Update skeleton** (you don't need to move anything). Check with *Weights* → Head |
 | The character stares at the floor in a walk or run | The source move leans the body and tips the head; on a big head that reads as looking down | ✦ Moves › ✎ Adjust the current clip › **Keep head level** 80–100% (and *Lean* about −8° if hunched) → *Replace* |
 | A joint is in the wrong place (shoulder too high, knees off) | Marker placed off when the skeleton was built | **✎ Edit skeleton**, move the joint, **Update skeleton**. Clips are kept |
-| The character floats or sinks in a move | Very different hip height between the source and your character | ✦ Moves › *Crouch*, or move the hips on *My edits* (one key shifts the whole clip) |
+| The character floats or sinks in a move | Clips added before version 1.1 (older retargeting lost the hip motion on Mixamo-rigged characters and misjudged leg length) | Add the move again from ✦ Moves (or ✎ Adjust the current clip › *Replace*): feet now keep the source's ground contact. Fine-tune with *Crouch* or a hips key on *My edits* |
+| The character floats or sinks **in the game** | The model's origin isn't at its feet (Meshy models have it in the middle of the body), and engines stand a character on its origin | Export again with **Feet at ground level, y = 0** (on by default since 1.1) |
 | Mixamo file looks bent or floats | A *Without Skin* download that stores an odd rest pose | Download **With Skin** instead |
 | Ctrl+N opens a browser window | Browsers keep Ctrl+N | New clip is **Shift+N** (or **+ New**) |
 | Changes I was told about don't show | The page still runs the old code | Press **F5** in the AnimStudio tab |
