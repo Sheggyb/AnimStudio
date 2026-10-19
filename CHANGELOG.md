@@ -4,6 +4,17 @@ Newest first. "Press F5" after an update means the browser tab must reload to ru
 
 ---
 
+## 1.3.0 — 2026-10-20 — a skeleton builder that finds the joints, and fingers
+
+Press F5 (restart your AI app for the new `build_skeleton` option).
+
+- **Auto-fit finds the joints.** It reads the body's outline instead of fitting a template. Shoulders, elbows, wrists, neck, hips, knees and ankles now land on the joints of humans and of chibi characters with big heads and helmets. Bandana tails, capes and weapons sticking out are no longer taken for an arm. Joints sit in the middle of the body front to back.
+- **Fingers.** Tick *Fingers* (on by default when the mesh has separate fingers): auto-fit finds the base and tip of each finger and the thumb, and the skeleton gets three bones per finger (70 bones in all). The bones are named like Mixamo's, so Mixamo moves animate the fingers too. On mitten hands the fingers are spread over the hand. The *Hand* view shows them up close, and *Find fingers again* redoes just the hands. *Edit skeleton* can add fingers to a skeleton built without them.
+- **Much easier to place.** Drag any dot (in Front view it stays centred in the body), or pick a joint and click the model. *See through* shows dots inside the body, and dots keep the same size on screen when you zoom in. Hover a dot for its name. Shift-drag the hips to move the whole skeleton. Undo and redo with Ctrl+Z / Ctrl+Y, and Tab steps through the joints. The sliders and the pink reference skeleton are gone.
+- **Joint dots in the viewport** no longer grow over the fingers when you zoom in on a hand.
+- **The character no longer vanishes while it saves.** Building a skeleton, *Save rigged model* and *Export GLB* used to take the model off screen until a big file was written.
+- **AI (MCP):** `build_skeleton` takes `fingers` (true / false; by default, fingers when the mesh has them).
+
 ## 1.2.0 — 2026-10-18 — feet that stay put, ready for the game
 
 Restart AnimStudio (`start.bat` / `npm start`), press F5, and restart your AI app so it sees the new tools.

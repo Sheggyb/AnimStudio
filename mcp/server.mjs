@@ -90,7 +90,7 @@ const TOOLS = [
   tool('status', 'AnimStudio status', 'What is open in AnimStudio: model, current clip, frame, skeleton state, library size. Call this first.', none, READ),
   tool('list_models', 'List characters', 'Characters that can be loaded.', none, READ),
   tool('load_model', 'Open a character', 'Open a character in the viewport (unsaved work is autosaved first).', { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] }, EDIT),
-  tool('build_skeleton', 'Build a skeleton', 'Give the current model a humanoid skeleton automatically (auto-fit markers + automatic skin weights). Needed before animating models without a recognised skeleton.', none, EDIT),
+  tool('build_skeleton', 'Build a skeleton', 'Give the current model a humanoid skeleton automatically (auto-fit markers + automatic skin weights). Needed before animating models without a recognised skeleton.', { type: 'object', additionalProperties: false, properties: { fingers: { type: 'boolean', description: 'Add finger bones (3 per finger). Default: only when the mesh has separate fingers.' } } }, EDIT),
   tool('get_rig', 'Skeleton and pose conventions', 'Controllable bones of the current character and the pose conventions used by key_pose.', none, READ),
   tool('list_clips', 'List clips', 'Clips (animations) of the current character.', none, READ),
   tool('select_clip', 'Select a clip', 'Select a clip and play it in the viewport.', { type: 'object', properties: { name: { type: 'string' }, play: { type: 'boolean' } }, required: ['name'] }, VIEW),

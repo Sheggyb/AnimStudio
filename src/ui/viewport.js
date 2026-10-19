@@ -295,6 +295,9 @@ export class Viewport {
     const pos = this.lines.geometry.attributes.position;
     const scale = app.settings.jointScale;
     const sel = app.sel.bones;
+    // Zoomed in close (e.g. on a hand) the dots would cover the fingers: at most ~9 px across.
+    const cam = this.camera;
+    const perPx = (2 * Math.tan(((cam.fov / 2) * Math.PI) / 180)) / (this.el.clientHeight || 600);
     let seg = 0;
     for (let i = 0; i < rig.bones.length; i++) {
       const m = this.joints[i];
@@ -304,7 +307,8 @@ export class Viewport {
       if (m.visible) {
         const active = i === app.sel.active;
         m.material = active ? this.matActive : sel.has(i) ? this.matSel : i === this.hover ? this.matHover : this.mats[rig.group[i]];
-        m.scale.setScalar(this.radius[i] * scale * (active ? 1.55 : sel.has(i) ? 1.3 : i === this.hover ? 1.3 : 1));
+        const r = Math.min(this.radius[i], 4.5 * perPx * cam.position.distanceTo(m.position));
+        m.scale.setScalar(r * scale * (active ? 1.55 : sel.has(i) ? 1.3 : i === this.hover ? 1.3 : 1));
       }
       const p = rig.parent[i];
       if (showL && p >= 0 && vis && this.jointVisible(p)) {

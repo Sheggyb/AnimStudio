@@ -27,7 +27,16 @@ export function exportClipName(clip, loopSuffix = '') {
  *                  feetAtOrigin: move the character so its feet are at y = 0 (default true) }
  * @returns ArrayBuffer (GLB)
  */
-export async function exportGLB(model, clips, opts = {}) {
+export function exportGLB(model, clips, opts = {}) {
+  // One at a time: an export lends the live model to its own scene and poses it, so two at once
+  // (e.g. the rigged-model save right after a build, plus an export) would leave it in the wrong scene.
+  const run = queue.then(() => exportOnce(model, clips, opts));
+  queue = run.catch(() => {});
+  return run;
+}
+let queue = Promise.resolve();
+
+async function exportOnce(model, clips, opts) {
   const { fps = 30, reduce = 0, includeMesh = true, onlyVisible = true, fillRest = true, inPlace = false, loopSuffix = '', feetAtOrigin = true } = opts;
   const travel = opts.rootMotion || (inPlace ? 'inplace' : 'keep');
   const rig = model.rig;
@@ -79,18 +88,14 @@ export async function exportGLB(model, clips, opts = {}) {
   });
   model.root.updateMatrixWorld(true);
 
-  const scene = new THREE.Scene();
+  // The live model is exported in place (not moved into a scene of its own), so it stays on screen while a big file saves.
   let exportRoot;
-  const prevParent = model.root.parent;
-  if (includeMesh) {
-    exportRoot = model.root;
-    scene.add(exportRoot);
-  } else {
+  if (includeMesh) exportRoot = model.root;
+  else {
     exportRoot = SkeletonUtils.clone(model.root);
     const meshes = [];
     exportRoot.traverse((o) => o.isMesh && meshes.push(o));
     meshes.forEach((m) => m.parent.remove(m));
-    scene.add(exportRoot);
   }
   // Engines stand a character on its origin. Many models (e.g. Meshy) have it in the middle of
   // the body, so they would sink into or hover above the floor: put the feet at y = 0.
@@ -98,10 +103,9 @@ export async function exportGLB(model, clips, opts = {}) {
   const lift = feetAtOrigin ? -new THREE.Vector3(0, rig.ground, 0).applyMatrix4(exportRoot.matrix).y : 0; // through the root's own scale/offset
   exportRoot.position.y += lift;
   try {
-    return await new GLTFExporter().parseAsync(scene, { binary: true, trs: true, onlyVisible, animations: threeClips });
+    return await new GLTFExporter().parseAsync(exportRoot, { binary: true, trs: true, onlyVisible, animations: threeClips });
   } finally {
     exportRoot.position.y -= lift;
-    if (includeMesh && prevParent) prevParent.add(model.root);
     model.parts.forEach((p, i) => (p.mesh.material = swapped[i]));
   }
 }

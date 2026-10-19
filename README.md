@@ -190,16 +190,20 @@ Everything can be undone (Ctrl+Z). **Ghost** (G) overlays the original clip so y
 
 Use this for models that have no skeleton or whose bones aren't recognised (the Rig tab says "Partial"). Open it from **Tools › Build skeleton**, the Rig tab button, or the prompt shown when such a model loads.
 
-1. **Auto-find** scans the mesh and places markers for the hips, chest, neck, head top, shoulders, elbows, wrists, hand tips, hip joints, knees, ankles and toes. It handles arms hanging down and T-/A-poses.
-2. Check the markers in **Front** and **Side** view. To fix one, select it in the list (or click it), then click the model where that joint really is. The marker goes *inside* the body, the right side mirrors automatically, and the next marker is selected. You can also drag markers with the arrows.
-3. Press **Build skeleton**. This creates a 30-bone humanoid skeleton with automatic skin weights, including three weapon sockets (see below). The rigged character is saved automatically as `AnimStudio/models/<name>_rigged.glb`. From then on, open that file (it's in the model list) so the rig survives reloads. Your clips are kept in the project.
+1. **Auto-fit** finds the joints for you: the hips, chest, neck, head top, shoulders, elbows, wrists, hand tips, hip joints, knees, ankles and toes. It reads the body's outline, so bandana tails, capes, weapons and big chibi heads don't fool it, and it works with arms in a T-pose, an A-pose or hanging down. With **Fingers** ticked (on when the mesh has separate fingers) it also finds the base and tip of every finger and the thumb. On mitten hands it spreads them evenly over the hand.
+2. Check the dots in **Front**, **Side** and **Hand** view. **See through** (on by default) shows the dots inside the body.
+   - **Drag any dot** to where the joint really is. In Front view it stays centred in the body front to back (*Keep joints inside*); fix the depth in Side view.
+   - Or pick a joint in the list (**Tab** steps to the next one) and **click the model**: the dot goes inside the body there.
+   - *Mirror left → right* keeps both sides equal. **Shift-drag the hips** to move the whole skeleton. Hover a dot to see which joint it is.
+   - **Ctrl+Z / Ctrl+Y** undo and redo, **Esc** closes. *Find fingers again* redoes only the hands, *↻ Auto-fit* redoes everything.
+3. Press **Build skeleton**. This creates a humanoid skeleton with automatic skin weights: 30 bones, or 70 with fingers (three bones per finger, named like Mixamo's, so Mixamo finger animation plays on them). It includes three weapon sockets (see below). The rigged character is saved automatically as `AnimStudio/models/<name>_rigged.glb`. From then on, open that file (it's in the model list) so the rig survives reloads. Your clips are kept in the project.
 4. Turn on **Weights** and click bones to check the skinning.
    - **Head moves as one piece** (on by default): the head follows only the Head bone, like most game rigs. Turning or nodding then never stretches the face, helmet or hair; only a short band at the neck blends between neck and head. Untick it for soft, squashy heads.
    - **Parts hanging off the head move with the head.** Helmet rims, hair, ponytails, ears and bandana tails count as head even where they reach down beside the shoulders. AnimStudio decides along the mesh surface, so a tail hanging from the head knot belongs to the head even where it lies on the shoulder. This matters for Meshy models, which are one welded mesh.
    - **Separate pieces** (armour plates, buttons) move as solid objects with the bone they sit on.
 5. Press **✦ Moves** to put walks, runs, attacks, dances and more on it. You can also animate by hand with IK.
 
-**Fix it later — Edit skeleton:** if an animation shows a joint in the wrong place (shoulder too high, knees off, hips too low), open **Rig tab › ✎ Edit skeleton** (or Tools › Build / edit skeleton). It starts from your current joints. Pick a joint in the list or click its dot, then click the model where it should be (or drag the yellow dot); *Mirror left → right* keeps both sides equal. Press **Update skeleton**: the skin is redone, **every clip is kept**, and hip heights in your clips move with the hips. Use *↻ Auto-fit* only if you want to start over.
+**Fix it later — Edit skeleton:** if an animation shows a joint in the wrong place (shoulder too high, knees off, hips too low), open **Rig tab › ✎ Edit skeleton** (or Tools › Build / edit skeleton). It starts from your current joints: drag the dot that is off (or pick it and click the model), *Mirror left → right* keeps both sides equal. Tick *Fingers* to add fingers to a skeleton built without them. Press **Update skeleton**: the skin is redone, **every clip is kept**, and hip heights in your clips move with the hips. Use *↻ Auto-fit* only if you want to start over.
 
 Rigs with standard bone names (Mixamo `mixamorig:LeftArm`, Unreal `upperarm_l`, Blender `UpperArm.L`) are recognised automatically, so they can be retargeted without rebuilding.
 
@@ -380,7 +384,8 @@ AnimStudio/
   src/io/
     loader.js           GLB + FBX (Mixamo) + BVH (motion capture) loading; skeleton-only files;
                         FBX hips/bind-pose fixes; BVH units and Z-up
-    rigbuild.js         skeleton builder: auto-find markers, bones, automatic skin weights,
+    autofit.js          finds the joints (and fingers) on a mesh from its outline
+    rigbuild.js         skeleton builder: bones (optional fingers), automatic skin weights,
                         rigid head + headRegion() (surface-distance head/body split)
     packs.js            animation packs in animations/ (server list or animations/index.json)
     packbuild.js        ＋ Add animations: downloaded .fbx/.glb files -> one pack per skeleton
@@ -397,7 +402,7 @@ The design has four parts:
 - **Copy-on-write clips:** every edit clones the touched clip, so undo and redo are just swaps of array references, and live previews are throwaway clones.
 - **No build step:** native ES modules plus an import map for three.js.
 - **One command registry:** menus, the palette, shortcuts, and buttons all run the same commands.
-- **The core can be tested headlessly:** `npm test` (63 tests) covers rig labeling (by bone names and by skeleton shape), IK, layered keying, every modifier, retargeting (incl. travel on rigs with and without a root), gait generation, foot contacts and planting, footstep events, root motion, sequences, finding loops, BVH import, engine export, building animation packs, weapon sockets, video-capture conversion, cycle averaging, keep-head-level, serialization and the MCP protocol. Tests that need no downloads use a character rigged by AnimStudio itself and generated motion. The rest need real animation data and are reported as *skipped* until you add the Quaternius *Universal Animation Library* packs as `animations/Quaternius Pack 1.glb` and `Quaternius Pack 2.glb` (see `tests/helpers.js`).
+- **The core can be tested headlessly:** `npm test` (65 tests) covers rig labeling (by bone names and by skeleton shape), auto-fitting joints and building skeletons with fingers, IK, layered keying, every modifier, retargeting (incl. travel on rigs with and without a root), gait generation, foot contacts and planting, footstep events, root motion, sequences, finding loops, BVH import, engine export, building animation packs, weapon sockets, video-capture conversion, cycle averaging, keep-head-level, serialization and the MCP protocol. Tests that need no downloads use a character rigged by AnimStudio itself and generated motion. The rest need real animation data and are reported as *skipped* until you add the Quaternius *Universal Animation Library* packs as `animations/Quaternius Pack 1.glb` and `Quaternius Pack 2.glb` (see `tests/helpers.js`).
 
 ## Known limits
 

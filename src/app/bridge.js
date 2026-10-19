@@ -438,10 +438,10 @@ const H = {
     return { saved: file, styles_used: used };
   },
 
-  async build_skeleton() {
+  async build_skeleton({ fingers = null } = {}) {
     need();
     const rb = ctxRefs.rigBuilder;
-    await rb.open({ skipConfirm: true });
+    await rb.open({ skipConfirm: true, fingers });
     if (!rb.active) throw new Error('Skeleton builder could not start');
     rb.build();
     return H.status();

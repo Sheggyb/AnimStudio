@@ -18,7 +18,21 @@ export const MARKERS = [
   { id: 'toe', label: 'Toe', side: true, hint: 'Ball of the foot / toes' },
 ];
 
-export const markerKeys = () => MARKERS.flatMap((m) => (m.side ? [`${m.id}.L`, `${m.id}.R`] : [m.id]));
+/** Finger markers (optional): where each finger starts (the knuckle) and its tip. */
+const FINGER_NAMES = { thumb: 'Thumb', index: 'Index finger', middle: 'Middle finger', ring: 'Ring finger', pinky: 'Little finger' };
+export const FINGER_MARKERS = Object.entries(FINGER_NAMES).flatMap(([id, label]) => [
+  { id, label: `${label} base`, side: true, finger: true, hint: id === 'thumb' ? 'Where the thumb leaves the hand, near the wrist' : `The knuckle where the ${label.toLowerCase()} starts` },
+  { id: `${id}Tip`, label: `${label} tip`, side: true, finger: true, hint: `Tip of the ${label.toLowerCase()}` },
+]);
+
+/** Marker keys ("pelvis", "elbow.L"…), with the finger markers when `fingers`. */
+export const markerKeys = (fingers = false) => [...MARKERS, ...(fingers ? FINGER_MARKERS : [])].flatMap((m) => (m.side ? [`${m.id}.L`, `${m.id}.R`] : [m.id]));
+export const markerInfo = (id) => MARKERS.find((m) => m.id === id) || FINGER_MARKERS.find((m) => m.id === id);
+/** Bone names of a finger: three segments and an end ("Index1_L", "Index2_L", "Index3_L", "Index_End_L"). */
+export const fingerBones = (f, s) => {
+  const cap = f[0].toUpperCase() + f.slice(1);
+  return [`${cap}1_${s}`, `${cap}2_${s}`, `${cap}3_${s}`, `${cap}_End_${s}`];
+};
 
 /** Mesh vertices in model space, exactly as displayed (skinning applied). */
 export function collectVertices(root, maxCount = 80000) {
@@ -43,194 +57,8 @@ export function collectVertices(root, maxCount = 80000) {
   return pts;
 }
 
-const median = (a) => {
-  if (!a.length) return 0;
-  const s = [...a].sort((x, y) => x - y);
-  return s[s.length >> 1];
-};
-const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
-
-/**
- * Guess every marker from the mesh shape. Assumes Y-up; finds the facing from the feet.
- * Returns { markers: {key: Vector3}, facing, center }.
- */
-export function autoFind(root) {
-  const pts = collectVertices(root);
-  const box = new THREE.Box3().setFromPoints(pts);
-  const H = box.max.y - box.min.y;
-  const g = box.min.y;
-  const at = (f) => g + f * H;
-  const band = (f0, f1) => pts.filter((p) => p.y >= at(f0) && p.y <= at(f1));
-  const torso = band(0.45, 0.75);
-  // Centre line from the legs' outer extents: robust to arms, weapons and uneven detail.
-  const legs = band(0.05, 0.3);
-  const lx = legs.map((p) => p.x).sort((a, b) => a - b);
-  const cx = lx.length ? (lx[Math.floor(lx.length * 0.02)] + lx[Math.floor(lx.length * 0.98)]) / 2 : (box.min.x + box.max.x) / 2;
-  const cz = median(torso.map((p) => p.z));
-  const slice = (f, tol = 0.02) => pts.filter((p) => Math.abs(p.y - at(f)) < tol * H);
-
-  // --- legs: find the crotch (highest height where left and right are separated)
-  let crotch = 0.45;
-  for (let f = 0.12; f <= 0.62; f += 0.01) {
-    const s = slice(f, 0.006);
-    if (s.length < 6) continue;
-    const gap = 0.012 * H;
-    const left = s.filter((p) => p.x > cx + gap).length;
-    const right = s.filter((p) => p.x < cx - gap).length;
-    const mid = s.filter((p) => Math.abs(p.x - cx) <= gap).length;
-    if (left > 2 && right > 2 && mid === 0) crotch = f;
-  }
-  const sideOf = (s, sgn) => s.filter((p) => (p.x - cx) * sgn > 0.01 * H);
-  const centerOf = (arr, fb) => (arr.length ? new THREE.Vector3(mean(arr.map((p) => p.x)), mean(arr.map((p) => p.y)), mean(arr.map((p) => p.z))) : fb);
-  const legCenter = (f, sgn) => centerOf(sideOf(slice(f, 0.015), sgn), new THREE.Vector3(cx + sgn * 0.08 * H, at(f), cz));
-
-  // --- facing from the feet: toes stick out further than heels
-  // Measure from the ankles: toes stick out further in front than heels behind. Only look at
-  // the feet themselves (off the centre line) and use percentiles so capes/robes can't fool it.
-  const feet = band(0, 0.05).filter((p) => Math.abs(p.x - cx) > 0.03 * H);
-  const fz = mean(slice(0.09, 0.015).filter((p) => Math.abs(p.x - cx) > 0.03 * H).map((p) => p.z));
-  const zs = feet.map((p) => p.z).sort((a, b) => a - b);
-  const pct = (q) => (zs.length ? zs[Math.min(zs.length - 1, Math.floor(q * zs.length))] : fz);
-  // glTF convention is +Z forward; only flip when the feet clearly point the other way.
-  const facing = fz - pct(0.05) > 1.3 * (pct(0.95) - fz) ? -1 : 1;
-  const leftSgn = facing; // glTF: facing +Z -> left is +X
-
-  const m = {};
-  const hipF = Math.min(0.62, crotch + 0.04);
-  m.pelvis = new THREE.Vector3(cx, at(hipF + 0.01), cz);
-  m.chest = new THREE.Vector3(cx, at(0.72), cz);
-  m.neck = new THREE.Vector3(cx, at(0.84), cz);
-  m.headTop = new THREE.Vector3(cx, box.max.y - 0.01 * H, median(slice(0.97, 0.03).map((p) => p.z)) || cz);
-
-  for (const [s, sgn] of [
-    ['L', leftSgn],
-    ['R', -leftSgn],
-  ]) {
-    const hip = legCenter(crotch - 0.04, sgn);
-    m[`hip.${s}`] = new THREE.Vector3(hip.x, at(hipF), cz);
-    const ankleF = 0.045;
-    m[`knee.${s}`] = legCenter((hipF + ankleF) / 2 + 0.01, sgn);
-    const ankle = legCenter(0.07, sgn);
-    m[`ankle.${s}`] = new THREE.Vector3(ankle.x, at(ankleF), ankle.z);
-    const foot = sideOf(band(0, 0.04), sgn).map((p) => p.z).sort((a, b) => a - b);
-    const tipZ = foot.length ? (facing > 0 ? foot[Math.floor(foot.length * 0.95)] : foot[Math.floor(foot.length * 0.05)]) : NaN;
-    m[`toe.${s}`] = new THREE.Vector3(ankle.x, at(0.015), Number.isFinite(tipZ) ? ankle.z + (tipZ - ankle.z) * 0.7 : ankle.z + facing * 0.06 * H);
-
-    // --- arms: trace the arm through the mesh
-    const path = traceArm(pts, cx, sgn, H, at);
-    let shoulder, tip;
-    if (path.length >= 3) {
-      shoulder = path[0].clone();
-      tip = path[path.length - 1].clone();
-    } else {
-      shoulder = new THREE.Vector3(cx + sgn * 0.11 * H, at(0.81), cz);
-      tip = new THREE.Vector3(cx + sgn * 0.2 * H, at(0.4), cz);
-      path.splice(0, path.length, shoulder, tip);
-    }
-    const along = (f) => pointAlong(path, f);
-    m[`shoulder.${s}`] = shoulder;
-    m[`elbow.${s}`] = along(0.44);
-    m[`elbow.${s}`].z -= facing * 0.01 * H; // elbows bend backwards
-    m[`wrist.${s}`] = along(0.8);
-    m[`handTip.${s}`] = tip;
-  }
-  // Pull every marker to the middle of the body along the front/back axis.
-  for (const k of Object.keys(m)) {
-    if (/^(toe|elbow|wrist|handTip)/.test(k)) continue; // traced arm points are already centred
-    const near = pts.filter((p) => Math.abs(p.y - m[k].y) < 0.02 * H && Math.abs(p.x - m[k].x) < 0.03 * H);
-    if (near.length > 3) m[k].z = (Math.min(...near.map((p) => p.z)) + Math.max(...near.map((p) => p.z))) / 2;
-  }
-  return { markers: m, facing, center: cx, height: H, ground: g };
-}
-
-/**
- * Follow one arm (side sgn) from shoulder to finger tip.
- * Arms hanging down: horizontal slices, the arm is the outer cluster separated from the torso
- * by a gap. Arms out (T/A-pose): vertical slices moving outwards from the torso.
- */
-function traceArm(pts, cx, sgn, H, at) {
-  const lat = (p) => (p.x - cx) * sgn;
-  const upper = pts.filter((p) => p.y > at(0.5) && p.y < at(0.9) && lat(p) > 0);
-  const maxLat = upper.reduce((a, p) => Math.max(a, lat(p)), 0);
-  const centroid = (arr) => arr.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(arr.length);
-  // Arms are "out" only when the widest point of the body is up near shoulder height.
-  const side = pts.filter((p) => p.y > at(0.3) && p.y < at(0.9) && lat(p) > 0);
-  const widest = side.reduce((a, p) => (lat(p) > lat(a) ? p : a), side[0] || new THREE.Vector3());
-  const path = [];
-  if (maxLat > 0.28 * H && widest.y > at(0.45)) {
-    // Arms out (T/A-pose). Arm axis from the forearm region, shoulder at the torso's edge.
-    const fore = upper.filter((p) => lat(p) > 0.6 * maxLat && lat(p) < 0.85 * maxLat);
-    const axis = fore.length ? centroid(fore) : widest.clone();
-    // Torso half-width at the belly; use the narrower side (a drooping hand can widen one side).
-    const belly = pts.filter((p) => Math.abs(p.y - at(0.5)) < 0.02 * H);
-    const ext = (sg) => belly.reduce((a, p) => Math.max(a, (p.x - cx) * sg), 0);
-    const torsoHalf = Math.min(ext(1), ext(-1)) || 0.15 * H;
-    const tip = upper.reduce((a, p) => (lat(p) > lat(a) ? p : a));
-    const shoulder = new THREE.Vector3(cx + sgn * torsoHalf * 0.85, axis.y + (tip.y - axis.y) * -0.15, axis.z);
-    path.push(shoulder, axis.clone(), tip.clone());
-  } else {
-    // arms down: walk down from armpit height looking for an outer cluster
-    let prev = null;
-    for (let f = 0.8; f >= 0.2; f -= 0.01) {
-      const s = pts.filter((p) => Math.abs(p.y - at(f)) < 0.005 * H && lat(p) > 0).sort((a, b) => lat(a) - lat(b));
-      if (s.length < 6) continue;
-      let cut = -1,
-        gap = 0.012 * H;
-      for (let i = 1; i < s.length; i++) {
-        const g = lat(s[i]) - lat(s[i - 1]);
-        if (g > gap) [gap, cut] = [g, i];
-      }
-      if (cut < 0) {
-        if (path.length > 3) break;
-        continue;
-      }
-      const c = centroid(s.slice(cut));
-      if (prev && c.distanceTo(prev) > 0.06 * H) break; // jumped to something else
-      path.push(c);
-      prev = c;
-    }
-    if (path.length >= 3) {
-      // shoulder joint sits above the armpit
-      const top = path[0];
-      path.unshift(new THREE.Vector3(top.x - sgn * 0.01 * H, Math.min(at(0.82), top.y + 0.07 * H), top.z));
-      // The trace stops where the hand touches the thigh: continue along the forearm direction
-      // inside a thin cylinder and take the furthest mesh point as the finger tip.
-      const last = path[path.length - 1];
-      const from = path[Math.max(1, path.length - 6)];
-      const dir = last.clone().sub(from);
-      if (dir.lengthSq() < 1e-10) dir.set(0, -1, 0);
-      dir.normalize();
-      let tip = last.clone().addScaledVector(dir, 0.08 * H);
-      let best = 0;
-      const tmp = new THREE.Vector3();
-      for (const p of pts) {
-        tmp.copy(p).sub(last);
-        const t = tmp.dot(dir);
-        if (t <= best || t > 0.2 * H) continue;
-        if (tmp.addScaledVector(dir, -t).length() < 0.03 * H) [best, tip] = [t, p.clone()];
-      }
-      path.push(tip);
-    }
-  }
-  return path;
-}
-
-/** Point at fraction f of a polyline's length. */
-function pointAlong(path, f) {
-  const segs = [];
-  let total = 0;
-  for (let i = 1; i < path.length; i++) {
-    const l = path[i].distanceTo(path[i - 1]);
-    segs.push(l);
-    total += l;
-  }
-  let target = f * total;
-  for (let i = 1; i < path.length; i++) {
-    if (target <= segs[i - 1] || i === path.length - 1) return path[i - 1].clone().lerp(path[i], Math.min(1, target / (segs[i - 1] || 1)));
-    target -= segs[i - 1];
-  }
-  return path[path.length - 1].clone();
-}
+import { FINGERS } from './autofit.js';
+export { autoFind, findFingers, FINGERS } from './autofit.js';
 
 /** Reflect an L marker to its R partner across the centre plane x = cx. */
 export function mirrorMarker(p, cx) {
@@ -544,6 +372,22 @@ export function buildSkeleton(gltf, markers, { facing = 1, rigidHead = true } = 
       [`Foot_${s}`]: `Toe_${s}`,
       [`Toe_${s}`]: `Toe_End_${s}`,
     });
+  // Fingers (when their markers are there): three bones each from the base to the tip. The hand
+  // bone then covers the palm only, up to the knuckles.
+  const FINGER_SPLIT = { thumb: [0, 0.38, 0.7, 1], other: [0, 0.5, 0.78, 1] };
+  for (const s of ['L', 'R']) {
+    if (!FINGERS.every((f) => markers[`${f}.${s}`] && markers[`${f}Tip.${s}`])) continue;
+    for (const f of FINGERS) {
+      const names = fingerBones(f, s);
+      const a = markers[`${f}.${s}`],
+        b = markers[`${f}Tip.${s}`];
+      (f === 'thumb' ? FINGER_SPLIT.thumb : FINGER_SPLIT.other).forEach((u, k) => (J[names[k]] = a.clone().lerp(b, u)));
+      PARENT[names[0]] = `Hand_${s}`;
+      for (let k = 1; k < 4; k++) PARENT[names[k]] = names[k - 1];
+      for (let k = 0; k < 3; k++) TAIL[names[k]] = names[k + 1];
+    }
+    TAIL[`Hand_${s}`] = fingerBones('middle', s)[0];
+  }
 
   // ---- collect geometry exactly as displayed, then remove the old content
   const meshes = [];

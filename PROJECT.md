@@ -36,7 +36,7 @@ For the full user guide, see [README.md](README.md); for what changed recently, 
 | Area | What it does |
 |---|---|
 | **Start page** | Continue (projects with thumbnails), My characters, drop zone, **Animation packs**, feature list |
-| **Skeleton builder** | Fit a pink reference skeleton with sliders, fine-tune single joints, then build a 30-bone humanoid with automatic skin weights and 3 weapon sockets |
+| **Skeleton builder** | Auto-fit finds the joints (and fingers) from the body's outline; drag any dot that is off, then build a 30-bone humanoid (70 with fingers) with automatic skin weights and 3 weapon sockets |
 | **Edit skeleton** | Reopens a built skeleton at its current joints; move any joint and press *Update*. The skin is redone and **all clips are kept** (hip heights follow) |
 | **Skin weights** | Rigid head (no stretching); everything that hangs off the head (helmet rim, hair, bandana tails) follows the head, decided along the mesh surface; separate pieces stay solid |
 | **✦ Moves** | 87 moves from two CC0 Quaternius packs (any GLB in `animations/` adds more). Live preview on your character, sliders (speed, energy, arms, stride, bounce, lean, crouch, arms out, **keep head level**, head nod/turn, smoothness, life, mirror, loop) |
