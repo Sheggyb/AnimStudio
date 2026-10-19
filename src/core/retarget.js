@@ -156,9 +156,13 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
   const lowD = contact ? Math.min(...feetD.map((i) => dst.restWorld.p[i].y)) : 0;
   const dP = contact ? Array.from({ length: n }, () => new THREE.Vector3()) : null;
   // On some skeletons (Mixamo) the hips are the root bone; others have a root above the hips.
-  // A target without its own root gets the source's whole hip motion on its hips.
-  const hipsIsRootD = hipsD >= 0 && (dst.special.root === hipsD || dst.special.root == null || dst.special.root < 0);
+  // A target without its own root gets the source's whole hip motion on its hips. A source
+  // without its own root has no root motion to give: all of it is on its hips, which drive the
+  // target's hips (giving it to the target's root too would move the body twice as far).
+  const isRoot = (rig, hips) => hips >= 0 && (rig.special.root === hips || rig.special.root == null || rig.special.root < 0);
+  const hipsIsRootD = isRoot(dst, hipsD);
   const rootD = hipsIsRootD ? -1 : dst.special.root;
+  const rootS = isRoot(src, hipsS) ? -1 : src.special.root;
   const lp = new THREE.Vector3();
   let contactUsed = false;
 
@@ -184,7 +188,7 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
     // Hips & root translation: offset from rest, scaled.
     for (const [di, si, out] of [
       [hipsD, hipsS, hipsPos],
-      [rootD, src.special.root, rootPos],
+      [rootD, rootS, rootPos],
     ]) {
       if (di < 0 || si < 0 || di == null || si == null) continue;
       // Offset from rest, taken through model space: skeletons can store it on different axes
@@ -200,7 +204,7 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
       for (const i of dst.order) {
         const p = dst.parent[i];
         if (i === hipsD) lp.fromArray(hipsPos, k * 3);
-        else if (i === rootD && src.special.root >= 0) lp.fromArray(rootPos, k * 3);
+        else if (i === rootD && rootS >= 0) lp.fromArray(rootPos, k * 3);
         else lp.copy(dst.rest[i].p);
         dP[i].copy(lp).applyQuaternion(p < 0 ? dst.baseQ : dW[p]).add(p < 0 ? dst.baseP : dP[p]);
       }
@@ -234,10 +238,10 @@ export function retargetClip(srcClip, src, dst, { mode = 'auto', fps = 30, finge
   const movesPos = (i) => i != null && i >= 0 && srcClip.layers.some((l) => l.tracks[src.names[i]]?.pos);
   for (const [di, out, srcIdx] of [
     [hipsD, hipsPos, hipsS],
-    [rootD, rootPos, src.special.root],
+    [rootD, rootPos, rootS],
   ]) {
     if (di == null || di < 0 || srcIdx == null || srcIdx < 0) continue;
-    const srcHasPos = movesPos(srcIdx) || (di === hipsD && hipsIsRootD && movesPos(src.special.root));
+    const srcHasPos = movesPos(srcIdx) || (di === hipsD && hipsIsRootD && movesPos(rootS));
     if (!srcHasPos && !(di === hipsD && contactUsed)) continue;
     const ch = makeChannel('pos', times, out);
     if (tolerance > 0) reduceChannel(ch, 0.0005);

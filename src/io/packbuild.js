@@ -1,9 +1,9 @@
 // Build animation packs (one GLB = one skeleton + many clips) from files people downloaded
-// themselves: Mixamo .fbx downloads, other .fbx/.glb animation files. Runs in the browser
+// themselves: Mixamo .fbx downloads, other .fbx/.glb animation files, .bvh motion capture. Runs in the browser
 // (start page › ＋ Add animations) and in Node (tools/build-mixamo-pack.mjs).
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { readFBX, readGLTF, SKIN_ANCHOR } from './loader.js';
+import { readGLTF, readModelFile, SKIN_ANCHOR } from './loader.js';
 
 const boneNames = (scene) => {
   const s = new Set();
@@ -12,13 +12,13 @@ const boneNames = (scene) => {
 };
 
 /** "Breathing Idle.fbx" -> "Breathing_Idle" (AnimStudio shows it as "Breathing idle"). */
-export const moveName = (file) => file.replace(/\.(fbx|glb|gltf)$/i, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'Move';
+export const moveName = (file) => file.replace(/\.(fbx|glb|gltf|bvh)$/i, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'Move';
 
 /** The take that actually moves (Mixamo files also carry an empty "Take 001"). */
 const mainTake = (animations) => [...animations].sort((a, b) => b.tracks.length * b.duration - a.tracks.length * a.duration)[0];
 
 async function readAny(name, buffer) {
-  return /\.fbx$/i.test(name) ? readFBX(buffer) : readGLTF(buffer);
+  return readModelFile(buffer, name);
 }
 
 /**
@@ -40,7 +40,7 @@ export async function readAnimationFiles(files, { onProgress } = {}) {
       // Same skeleton = (almost) the same bone names.
       let group = groups.find((x) => [...bones].filter((n) => !x.bones.has(n)).length <= 2);
       if (!group) groups.push((group = { base: g.scene, bones, clips: [], files: [] }));
-      const clips = /\.fbx$/i.test(f.name) ? [take] : g.animations.filter((a) => a.tracks.length && a.duration > 0);
+      const clips = /\.(fbx|bvh)$/i.test(f.name) ? [take] : g.animations.filter((a) => a.tracks.length && a.duration > 0);
       for (const c of clips) {
         if (clips.length === 1) c.name = moveName(f.name);
         c.tracks = c.tracks.filter((t) => group.bones.has(t.name.slice(0, t.name.lastIndexOf('.'))));

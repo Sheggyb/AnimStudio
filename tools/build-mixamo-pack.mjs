@@ -34,9 +34,9 @@ const SRC = path.resolve(process.argv[2] || path.join(APP, 'mixamo'));
 const NAME = (process.argv[3] || 'Mixamo Pack').replace(/\.glb$/i, '');
 const OUT_DIR = path.join(APP, 'animations');
 
-const names = fs.existsSync(SRC) ? fs.readdirSync(SRC).filter((f) => /\.(fbx|glb)$/i.test(f)).sort() : [];
+const names = fs.existsSync(SRC) ? fs.readdirSync(SRC).filter((f) => /\.(fbx|glb|bvh)$/i.test(f)).sort() : [];
 if (!names.length) {
-  console.log('No .fbx or .glb files in', SRC);
+  console.log('No .fbx, .glb or .bvh files in', SRC);
   process.exit(0);
 }
 const files = names.map((name) => {

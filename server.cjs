@@ -18,6 +18,13 @@ const LIBRARY_DIR = path.join(APP_DIR, 'library');
 const ANIM_DIR = path.join(APP_DIR, 'animations'); // animation packs (GLBs full of moves) for the Move Maker
 const PROPS_DIR = path.join(APP_DIR, 'props');
 const MAX_BODY = 512 * 1024 * 1024;
+const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8')).version;
+  } catch {
+    return null;
+  }
+})();
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -85,6 +92,17 @@ function readBody(req) {
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
+}
+
+/** Parse a JSON body; a malformed one is the client's error (400), not the server's. */
+function parseJson(buf, fallback) {
+  const text = buf.toString('utf8');
+  if (!text.trim() && fallback !== undefined) return fallback;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw Object.assign(new Error('Invalid JSON'), { status: 400 });
+  }
 }
 
 function listFiles(dir, exts) {
@@ -155,7 +173,7 @@ async function api(req, res, url) {
   }
   if (p === '/api/bridge/status') return json(res, { connected: bridge.clients.size });
   if (p === '/api/bridge/result' && req.method === 'POST') {
-    const msg = JSON.parse((await readBody(req)).toString('utf8'));
+    const msg = parseJson(await readBody(req));
     const pend = bridge.pending.get(msg.id);
     if (pend) {
       clearTimeout(pend.timer);
@@ -165,7 +183,7 @@ async function api(req, res, url) {
     return json(res, { ok: true });
   }
   if (p === '/api/bridge/call' && req.method === 'POST') {
-    const { cmd, args, timeout } = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    const { cmd, args, timeout } = parseJson(await readBody(req), {});
     try {
       const r = await bridgeCall(cmd, args || {}, Math.min(900000, timeout || 120000));
       return json(res, r);
@@ -177,7 +195,7 @@ async function api(req, res, url) {
   if (p === '/api/models') return json(res, { models: listModels() });
   if (p === '/api/animpacks') return json(res, { packs: listFiles(ANIM_DIR, ['.glb']).map((f) => f.name) });
   if (p === '/api/projects') return json(res, { projects: listProjects() });
-  if (p === '/api/info') return json(res, { exportDir: EXPORT_DIR, projectDir: PROJECT_DIR, modelDir: MODEL_DIR });
+  if (p === '/api/info') return json(res, { version: VERSION, exportDir: EXPORT_DIR, projectDir: PROJECT_DIR, modelDir: MODEL_DIR });
 
   // My move library: AnimStudio/library/*.move.json (moves on the standard skeleton)
   if (p === '/api/library') {
@@ -197,7 +215,7 @@ async function api(req, res, url) {
     if (req.method === 'GET') return serveFile(res, file);
     if (req.method === 'PUT' || req.method === 'POST') {
       const body = await readBody(req);
-      JSON.parse(body.toString('utf8'));
+      parseJson(body);
       fs.writeFileSync(file, body);
       return json(res, { path: file });
     }
@@ -214,7 +232,7 @@ async function api(req, res, url) {
     if (req.method === 'GET') return serveFile(res, file);
     if (req.method === 'PUT' || req.method === 'POST') {
       const body = await readBody(req);
-      JSON.parse(body.toString('utf8')); // validate
+      parseJson(body); // validate
       fs.writeFileSync(file + '.tmp', body);
       fs.renameSync(file + '.tmp', file);
       return json(res, { path: file });
@@ -235,7 +253,9 @@ async function api(req, res, url) {
     }
     if (req.method === 'PUT' || req.method === 'POST') {
       const body = await readBody(req);
-      fs.writeFileSync(file, body);
+      parseJson(body); // a cut-off autosave must not replace a good one
+      fs.writeFileSync(file + '.tmp', body);
+      fs.renameSync(file + '.tmp', file);
       return json(res, { path: file });
     }
     if (req.method === 'DELETE') {
@@ -340,14 +360,22 @@ const server = http.createServer(async (req, res) => {
       const f = safeJoin(EXPORT_DIR, p.slice('/exports/'.length));
       return f ? serveFile(res, f) : send(res, 403, 'Forbidden');
     }
-    // App files; node_modules only for three.js.
+    // App files; node_modules only for three.js. Dotfiles and dot-folders (.git, .mcp.json,
+    // .port…) are local state, not part of the app.
     if (p.startsWith('/node_modules/') && !p.startsWith('/node_modules/three/')) return send(res, 403, 'Forbidden');
     if (p.startsWith('/projects/') || p.startsWith('/exports/') || /\.(cjs)$/.test(p)) return send(res, 403, 'Forbidden');
+    let decoded;
+    try {
+      decoded = decodeURIComponent(p);
+    } catch {
+      return send(res, 400, 'Bad request');
+    }
+    if (decoded.split(/[\\/]/).some((s) => s.startsWith('.'))) return send(res, 403, 'Forbidden');
     const f = safeJoin(APP_DIR, p === '/' ? 'index.html' : p.slice(1));
     return f ? serveFile(res, f) : send(res, 403, 'Forbidden');
   } catch (e) {
-    console.error(e);
-    json(res, { error: e.message }, 500);
+    if (!e.status) console.error(e);
+    json(res, { error: e.message }, e.status || 500);
   }
 });
 

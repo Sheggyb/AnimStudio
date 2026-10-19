@@ -4,6 +4,7 @@ import { run } from '../../app/commands.js';
 import { GROUPS, GROUP_BY_ID, boneTitle } from '../../core/rig.js';
 import { clipKeyCount } from '../../core/clip.js';
 import { motionProfile, loopError, rangeOfMotion, keyPoseTimes } from '../../core/analysis.js';
+import { footReport } from '../../core/contacts.js';
 import { h, clear, debounce } from '../dom.js';
 import { promptDialog } from '../dialog.js';
 
@@ -23,9 +24,56 @@ export class ClipPanel {
     if (key !== this.analysisKey) {
       this.analysisKey = key;
       const prof = motionProfile(clip, app.rig, { fps: app.fps });
-      this.analysis = { prof, loop: loopError(clip, app.rig) };
+      const feet = app.rig.ik['foot.L'] || app.rig.ik['foot.R'] ? footReport(clip, app.rig, { fps: app.fps }) : null;
+      this.analysis = { prof, loop: loopError(clip, app.rig), feet };
     }
     return this.analysis;
+  }
+
+  /** Feet: when each foot is down, the speed to move the character at, sliding and sinking. */
+  feetSection(clip, r) {
+    const D = clip.duration || 1;
+    const cm = (x) => `${(x * 100).toFixed(1)} cm`;
+    const pct = (t) => `${(Math.min(1, Math.max(0, t / D)) * 100).toFixed(2)}%`;
+    const strip = h('div', { class: 'foot-strip', title: 'When each foot is down (click a step to jump to it). Ticks: footstep events.' });
+    for (const side of ['L', 'R']) {
+      const row = h('div', { class: 'foot-row' }, h('span', { class: 'foot-side' }, side));
+      const lane = h('div', { class: 'foot-lane' });
+      for (const s of r.steps.filter((x) => x.side === side)) {
+        const segs = s.from <= s.to ? [[s.from, s.to]] : [[s.from, D], [0, s.to]]; // a step across a loop's seam
+        for (const [a, b] of segs)
+          lane.append(
+            h('div', {
+              class: 'foot-down' + (s.slide > 0.015 ? ' slides' : ''),
+              style: { left: pct(a), width: `calc(${pct(b)} - ${pct(a)} + 2px)` },
+              title: `${side === 'L' ? 'Left' : 'Right'} foot down f${Math.round(s.from * app.fps)}–${Math.round(s.to * app.fps)}${s.slide > 0.002 ? ` · slides ${cm(s.slide)}` : ''}`,
+              onclick: () => (app.setPlaying(false), app.setTime(s.from)),
+            })
+          );
+      }
+      for (const e of clip.events.filter((x) => x.name === `footstep_${side}` || x.name === 'footstep')) lane.append(h('div', { class: 'foot-tick', style: { left: pct(e.t) } }));
+      row.append(lane);
+      strip.append(row);
+    }
+    const speedText = r.speed > 0.05 ? `${r.speed.toFixed(2)} m/s ${r.inPlace ? 'in place' : 'travelling'}` : 'standing';
+    const slideBad = r.maxSlide > 0.015;
+    return h(
+      'div',
+      { class: 'section' },
+      h('div', { class: 'sec-title' }, 'Feet'),
+      r.steps.length ? strip : h('div', { class: 'muted', style: { fontSize: '12px' } }, r.floating ? 'The feet never touch the ground.' : 'No steps found: the feet never stand still on the floor.'),
+      h('div', { class: 'stat', title: r.inPlace ? 'The ground moves back under the planted foot at this speed: move the character at it in your game and the feet won’t slide there either.' : 'How fast the hips travel.' }, h('span', {}, 'Speed'), h('span', {}, speedText)),
+      r.inPlace && r.speed > 0.05 ? h('div', { class: 'muted', style: { fontSize: '12px' } }, 'Move the character at this speed in your game and the feet stay planted there too.') : null,
+      r.steps.length ? h('div', { class: 'stat' }, h('span', {}, 'Sliding while down'), h('span', { style: { color: slideBad ? 'var(--warn)' : 'var(--good)' } }, r.maxSlide > 0.002 ? `up to ${cm(r.maxSlide)}` : 'none')) : null,
+      r.sink ? h('div', { class: 'stat' }, h('span', {}, 'Sinks into the floor'), h('span', { style: { color: 'var(--warn)' } }, cm(r.sink))) : null,
+      r.floating ? h('div', { class: 'muted', style: { fontSize: '12px', color: 'var(--warn)' } }, `The feet stay ${cm(r.floating)} or more above the floor. Fine for a jump or a fall; otherwise the character floats (add the move again, or lower the hips on My edits).`) : null,
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { class: 'small' + (slideBad || r.sink ? ' primary' : ''), title: 'Pin each foot while it stands, with leg IK (on the active layer)', onclick: () => run('op.footplant') }, 'Fix foot sliding…'),
+        h('button', { class: 'small', title: 'An event where each foot lands, for footstep sounds', onclick: () => run('op.footsteps') }, 'Add footstep events…')
+      )
+    );
   }
 
   render() {
@@ -103,7 +151,7 @@ export class ClipPanel {
 
     // ---- analysis
     if (clip.duration > 0) {
-      const { prof, loop } = this.analyze(clip);
+      const { prof, loop, feet } = this.analyze(clip);
       const total = Object.values(prof.groupTravel).reduce((a, b) => a + b, 0) || 1;
       const bars = GROUPS.filter((g) => prof.groupTravel[g.id] > 0)
         .sort((a, b) => prof.groupTravel[b.id] - prof.groupTravel[a.id])
@@ -162,6 +210,7 @@ export class ClipPanel {
           app.keyPoses?.clipId === clip.id ? h('div', { class: 'muted', style: { fontSize: '12px' } }, `Key poses (pink marks): frames ${app.keyPoses.times.map((t) => Math.round(t * fps)).join(', ')}`) : null
         )
       );
+      if (feet?.feet.length) this.el.append(this.feetSection(clip, feet));
       const i = app.sel.active;
       if (i >= 0) {
         const rom = rangeOfMotion(clip, app.rig, i, { fps });

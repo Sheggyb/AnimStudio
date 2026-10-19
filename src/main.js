@@ -26,8 +26,8 @@ import { RigPanel } from './ui/panels/rig.js';
 import { RigBuilder } from './ui/rigbuilder.js';
 import { MoveMaker } from './ui/movemaker.js';
 import { startBridge } from './app/bridge.js';
+import { VERSION } from './version.js';
 
-const VERSION = '2.0.0';
 const $ = (id) => document.getElementById(id);
 
 // =============================================================================
@@ -176,7 +176,7 @@ function setCompare(id) {
 register(
   // ---------------------------------------------------------------- file
   { id: 'file.open', label: 'Open model…', category: 'File', keys: ['Ctrl+O'], run: () => D.welcome() },
-  { id: 'file.openFile', label: 'Open character file (.glb / .fbx)…', category: 'File', run: async () => { const f = await D.pickFile('.glb,.gltf,.fbx'); if (f) openModel(await f.arrayBuffer(), f.name); } },
+  { id: 'file.openFile', label: 'Open character file (.glb / .fbx / .bvh)…', category: 'File', run: async () => { const f = await D.pickFile('.glb,.gltf,.fbx,.bvh'); if (f) openModel(await f.arrayBuffer(), f.name); } },
   { id: 'file.openProject', label: 'Open project file…', category: 'File', run: async () => { const f = await D.pickFile('.json'); if (f) openProjectJson(JSON.parse(await f.text()), f.name.replace(/\.animproj\.json$/i, '')); } },
   { id: 'file.save', label: 'Save project', category: 'File', keys: ['Ctrl+S'], enabled: hasModel, run: () => saveProject() },
   { id: 'file.saveAs', label: 'Save project as…', category: 'File', keys: ['Ctrl+Shift+S'], enabled: hasModel, run: () => saveProject({ as: true }) },
@@ -306,6 +306,7 @@ register(
   { id: 'tools.hold', label: 'Insert hold at playhead…', category: 'Clip', enabled: hasClip, run: D.holdDialog },
   { id: 'tools.layerClip', label: 'Layer another clip…', category: 'Tools', enabled: hasClip, run: D.layerClipDialog },
   { id: 'tools.concat', label: 'Chain clips…', category: 'Tools', enabled: hasClip, run: D.concatDialog },
+  { id: 'tools.sequence', label: 'Preview transitions (Idle → Walk → Run)…', category: 'Tools', enabled: hasClip, run: () => D.sequenceDialog({ viewport, moveMaker }) },
   { id: 'tools.blend', label: 'Blend two clips…', category: 'Tools', enabled: hasClip, run: D.blendDialog },
   { id: 'tools.keyPoses', label: 'Key poses / pose-to-pose…', category: 'Tools', enabled: hasClip, run: D.keyPosesDialog },
   { id: 'tools.retarget', label: 'Retarget from another character…', category: 'Tools', enabled: hasModel, run: () => D.retargetDialog() },
@@ -511,7 +512,7 @@ const MENUS = [
   ['Key', ['key.selected', 'key.all', 'key.deleteAtTime', 'sep', 'keys.interp.smooth', 'keys.interp.linear', 'keys.interp.ease', 'keys.interp.step', 'sep', 'view.autoKey']],
   ['Pose', ['pose.reset', 'pose.copy', 'pose.paste', 'pose.pasteMirror', 'pose.mirrorToOther', 'pose.flip', 'pose.save', 'sep', 'select.parent', 'select.child', 'select.mirror', 'bone.nickname', 'sep', ...GROUPS.filter((g) => g.id !== 'attach').map((g) => `select.${g.id}`)]],
   ['Layers', ['layer.addAdditive', 'layer.addOverride', 'layer.rename', 'layer.duplicate', 'layer.mask', 'layer.up', 'layer.down', 'layer.bake', 'layer.delete']],
-  ['Tools', ['tools.moveMaker', 'tools.moveMakerClip', 'sep', ...OPS.map((o) => `op.${o.id}`), 'sep', 'tools.layerClip', 'tools.concat', 'tools.blend', 'tools.keyPoses', 'tools.retarget', 'sep', 'tools.buildSkeleton', 'tools.addSockets', 'tools.props']],
+  ['Tools', ['tools.moveMaker', 'tools.moveMakerClip', 'sep', ...OPS.map((o) => `op.${o.id}`), 'sep', 'tools.layerClip', 'tools.concat', 'tools.sequence', 'tools.blend', 'tools.keyPoses', 'tools.retarget', 'sep', 'tools.buildSkeleton', 'tools.addSockets', 'tools.props']],
   ['View', ['tool.select', 'tool.rotate', 'tool.move', 'tool.ik', 'tool.space', 'view.lockFeet', 'sep', 'view.onion', 'view.trail', 'view.ghostOriginal', 'view.weights', 'sep', 'view.allBones', 'view.skeleton', 'view.joints', 'view.mesh', 'view.parts', 'sep', 'view.front', 'view.side', 'view.back', 'view.top', 'view.persp', 'view.frame', 'sep', 'bottom.dope', 'bottom.graph', 'timeline.fit', 'play.loop']],
   ['Help', ['help.guide', 'help.shortcuts', 'help.palette', 'sep', 'help.about']],
 ];
@@ -751,13 +752,14 @@ updateStatus();
     const f = e.dataTransfer.files[0];
     if (!f) return;
     const lower = f.name.toLowerCase();
-    const fbx = [...e.dataTransfer.files].filter((x) => /\.fbx$/i.test(x.name));
-    // No character open yet: an FBX is the character. Otherwise FBX files are animations for it.
+    const fbx = [...e.dataTransfer.files].filter((x) => /\.(fbx|bvh)$/i.test(x.name));
+    // No character open yet: an FBX (or a BVH skeleton) is the character. Otherwise FBX and BVH
+    // files are animations for it.
     if (fbx.length && !app.model) {
       if (await openModel(await fbx[0].arrayBuffer(), fbx[0].name)) document.getElementById('welcome')?.remove();
       return;
     }
-    if (fbx.length) return D.importAnimFiles(fbx); // Mixamo downloads: one or many at once
+    if (fbx.length) return D.importAnimFiles(fbx); // Mixamo downloads, motion capture: one or many at once
     if ((lower.endsWith('.glb') || lower.endsWith('.gltf')) && !app.model) {
       if (await openModel(await f.arrayBuffer(), f.name)) document.getElementById('welcome')?.remove();
     } else D.importFile(f);

@@ -4,7 +4,7 @@ import { evalWorld } from '../src/core/evaluate.js';
 import { generateMotion } from '../src/core/gait.js';
 import { standardRig } from '../src/core/standard.js';
 import { retargetClip } from '../src/core/retarget.js';
-import { getTrack } from '../src/core/clip.js';
+import { getTrack, makeClip } from '../src/core/clip.js';
 import { setKey } from '../src/core/channel.js';
 
 const FEET = ['foot.L', 'foot.R', 'toe.L', 'toe.R'];
@@ -52,6 +52,25 @@ export function feetStayOnTheGround() {
       assert(worst < 0.005, `${type} on ${name}: feet ${(worst * 100).toFixed(1)}% of leg length off the source's ground contact`);
     }
   }
+}
+
+export function travelIsNotDoubledOnRigsWithARoot() {
+  // A Mixamo clip that travels (a roll, a running jump): its hips are its root bone. On a rig with
+  // a Root above the hips (every skeleton AnimStudio builds) the travel goes on the hips once,
+  // scaled by leg length, and the Root stays put.
+  const src = mixamoRig();
+  const dst = tPoseCharacter().rig;
+  const hips = src.names[src.special.hips];
+  const clip = makeClip('Roll', 1);
+  const p0 = src.rest[src.special.hips].p;
+  setKey(getTrack(clip.layers[0], hips, 'pos', true), 0, p0.toArray());
+  setKey(getTrack(clip.layers[0], hips, 'pos', true), 1, [p0.x, p0.y, p0.z + 1]);
+  const { clip: out } = retargetClip(clip, src, dst, { mode: 'auto' });
+  const travel = (c, rig) => evalWorld(c, c.duration, rig).wp[rig.special.hips].z - evalWorld(c, 0, rig).wp[rig.special.hips].z;
+  const want = legHeight(dst) / legHeight(src);
+  const got = travel(out, dst);
+  assert(Math.abs(got - want) < 0.02 * want, `hips travel ${got.toFixed(3)} m, want ${want.toFixed(3)} m (leg length ratio)`);
+  assert(!out.layers[0].tracks[dst.names[dst.special.root]]?.pos, 'the Root bone is not moved as well');
 }
 
 export function hipsKeepTheirBounceOnMixamoRigs() {

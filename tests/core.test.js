@@ -394,14 +394,15 @@ export async function generatedMotionsAreAnatomical() {
     const hL = w0.wp[rig.byKind.get('hand.L')][f] * fs, hR = w0.wp[rig.byKind.get('hand.R')][f] * fs;
     assert(fL > fR + 0.05 * rig.height, `left foot forward at contact (${(fL - fR).toFixed(3)})`);
     assert(hR > hL, 'opposite arm forward');
-    // knee of the swinging leg bends more than the planted one a quarter cycle later
+    // A quarter cycle after the left heel strike the left foot stands under the body and the
+    // right leg swings forward: its knee bends more than the planted one.
     const run = generateMotion(rig, 'run');
     const r = evalWorld(run, run.duration * 0.25, rig);
     const kneeAngle = (s) => {
       const a = r.wp[rig.byKind.get(`thigh.${s}`)], b = r.wp[rig.byKind.get(`calf.${s}`)], cc = r.wp[rig.byKind.get(`foot.${s}`)];
       return b.clone().sub(a).angleTo(cc.clone().sub(b));
     };
-    assert(kneeAngle('L') > kneeAngle('R'), 'swing knee bends');
+    assert(kneeAngle('R') > kneeAngle('L'), 'swing knee bends');
   }
   assert(resolveBone(std, 'left thigh') === std.byKind.get('thigh.L') && resolveBone(std, 'R Forearm') === std.byKind.get('forearm.R') && resolveBone(std, 'head') === std.special.head, 'bone names resolve');
 }

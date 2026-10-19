@@ -5,6 +5,7 @@ import { makeClip, getTrack } from './clip.js';
 import { setKey, SMOOTH, frameTimes } from './channel.js';
 import { anatomicalLocal, bodyOffsetLocal } from './anatomy.js';
 import { evalWorld } from './evaluate.js';
+import { plantFeet } from './contacts.js';
 
 const TAU = Math.PI * 2;
 
@@ -23,7 +24,9 @@ export const GAITS = {
 /**
  * Generate a looping motion on `rig`.
  * @param {string} type key of GAITS
- * @param {object} p overrides of the preset (see GAITS) + { cycles = 1, fps = 30, speed = 1, name }
+ * @param {object} p overrides of the preset (see GAITS) + { cycles = 1, fps = 30, speed = 1, name,
+ *   plant = true: pin the feet while they are down, so they don't slide (the legs get a key on
+ *   every frame they stand; false keeps the sparse keys, for hand editing) }
  */
 export function generateMotion(rig, type = 'walk', p = {}) {
   const base = GAITS[type] || GAITS.walk;
@@ -90,16 +93,21 @@ export function generateMotion(rig, type = 'walk', p = {}) {
       ['L', 0],
       ['R', Math.PI],
     ]) {
-      const a = ph + off;
-      const swingPhase = Math.sin(a); // >0 = leg travelling forward (swing), <0 = stance
-      const hipAng = Math.cos(a) * q.stride; // forward at contact
-      const lift = Math.max(0, swingPhase); // knee bends during swing
+      const a = ph + off; // 0: heel strike with the foot in front; the foot is down until π
+      const hipAng = Math.cos(a) * q.stride; // forward at contact, back at toe-off
+      // The thigh sweeps back while the foot is down (0..π) and forward through the swing (π..2π),
+      // so the knee lifts the foot in the swing only (lifting it while sweeping back walks backwards).
+      const swingPhase = -Math.sin(a); // >0 = leg travelling forward (swing), <0 = stance
+      const lift = Math.max(0, swingPhase);
       const knee = q.kneeContact + lift * (q.kneeLift - q.kneeContact) * (limp && s === 'R' ? 1 - limp * 0.6 : 1);
       put(K(`thigh.${s}`), t, { swing: hipAng + lift * q.kneeLift * 0.25, spread: s === 'L' ? 1 : 1 });
       put(K(`calf.${s}`), t, { swing: -knee });
-      // ankle: toes up at contact, push-off at the end of stance, keep sole level otherwise
-      const foot = Math.cos(a) > 0.7 ? q.footRoll * (Math.cos(a) - 0.7) * 2 : -Math.max(0, -swingPhase) * q.footRoll * 0.6;
-      put(K(`foot.${s}`), t, { swing: foot + knee * 0.35 - hipAng * 0.4 });
+      // ankle: toes up at heel strike, toes pressing down as the heel lifts just before toe-off
+      // (u = 0.5), sole about level in between
+      const u = (((a / TAU) % 1) + 1) % 1;
+      const strike = Math.cos(a) > 0.7 ? q.footRoll * (Math.cos(a) - 0.7) * 2 : 0;
+      const pushOff = q.footRoll * Math.exp(-(((u - 0.45) / 0.1) ** 2));
+      put(K(`foot.${s}`), t, { swing: strike - pushOff + knee * 0.35 - hipAng * 0.4 });
       // ---- arms swing opposite to the same-side leg
       put(K(`upperarm.${s}`), t, { swing: -Math.cos(a) * q.armSwing, spread: q.armOut - armDrop[s] });
       put(K(`forearm.${s}`), t, { swing: q.elbow + Math.max(0, -Math.cos(a)) * q.armSwing * 0.4 });
@@ -107,6 +115,8 @@ export function generateMotion(rig, type = 'walk', p = {}) {
     }
   }
   groundFeet(clip, rig);
+  // The angles above only approximate a stance: the planted foot would skate across the floor.
+  if (q.plant !== false && !q.idle) plantFeet(clip, { rig, li: 0 });
   return clip;
 }
 

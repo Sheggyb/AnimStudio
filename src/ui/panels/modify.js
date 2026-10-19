@@ -17,6 +17,7 @@ const TOOLS = [
     ['tools.moveMakerClip', 'Adjust this clip', 'Speed, energy, lean, crouch, arms… on the current clip'],
     ['tools.layerClip', 'Layer another clip', 'e.g. attack on the upper body over a run'],
     ['tools.concat', 'Chain clips', 'This clip then another, with a crossfade'],
+    ['tools.sequence', 'Preview transitions', 'Idle → Walk → Run as your game blends them, live'],
     ['tools.blend', 'Blend two clips', 'Mix e.g. walk + run into a jog'],
     ['tools.keyPoses', 'Key poses', 'Find the key poses and build a pose-to-pose version'],
     ['tools.retarget', 'Retarget from character', 'Use another character’s animations on this one'],

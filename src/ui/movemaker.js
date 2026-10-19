@@ -46,6 +46,8 @@ const SLIDERS = [
 function pct(v) {
   return `${Math.round(v * 100)}%`;
 }
+/** Slider settings a picked move starts with: as it is, with its feet planted (no sliding). */
+const startParams = () => ({ ...STYLE_DEFAULTS, plantFeet: true });
 function deg(v) {
   return `${Math.round(v)}°`;
 }
@@ -67,7 +69,7 @@ export class MoveMaker {
     this.active = true;
     app.setPlaying(false);
     app.clearBones();
-    this.params = { ...STYLE_DEFAULTS };
+    this.params = startParams();
     this.base = null;
     this.sel = null;
     this.target = null;
@@ -279,7 +281,7 @@ export class MoveMaker {
       const { clip } = await loadMove(it.file);
       if (this.libSel !== it) return;
       this.base = moveOnCharacter(clip, app.rig, it.name);
-      this.params = { ...STYLE_DEFAULTS };
+      this.params = startParams();
       this.nameInput.value = this.uniqueName(it.name);
       this.replaceBtn.classList.add('hidden');
       this.addBtn.disabled = false;
@@ -310,7 +312,7 @@ export class MoveMaker {
 
   /** Blend reference styles of one move into a standard move and save it. */
   async makeStandard(move) {
-    const custom = this.sel?.move === move && Object.keys(STYLE_DEFAULTS).some((k) => k !== 'loop' && this.params[k] !== STYLE_DEFAULTS[k]);
+    const custom = this.sel?.move === move && Object.entries(startParams()).some(([k, v]) => k !== 'loop' && this.params[k] !== v);
     const v = await formDialog({
       title: `★ Save ${move.title} to my moves`,
       intro: 'Saves the move on AnimStudio’s neutral skeleton so it works on any character. With several styles, their timing is lined up and they are blended into one.',
@@ -363,7 +365,7 @@ export class MoveMaker {
     const improved = applyStyle(clip, std, this.params, { fps: 30 });
     await saveMove({ key: data.key || it.name, title: it.name, category: data.category, clip: improved, sources: data.sources, params: null, note: `${data.note || ''} · refined ${new Date().toLocaleDateString()}`.trim() });
     toast(`★ ${it.name} updated in your library`, 'ok');
-    this.params = { ...STYLE_DEFAULTS };
+    this.params = startParams();
     await this.refreshLibrary();
     const again = this.library.find((x) => x.file === it.file);
     if (again) await this.pickMine(again);
@@ -393,7 +395,7 @@ export class MoveMaker {
         base = retargetClip(clip, src.rig, app.rig, { mode: 'auto', name: move.key }).clip;
       }
       this.base = base;
-      this.params = { ...STYLE_DEFAULTS };
+      this.params = startParams();
       this.nameInput.value = this.uniqueName(move.title);
       this.replaceBtn.classList.add('hidden');
       this.addBtn.disabled = false;
@@ -416,7 +418,7 @@ export class MoveMaker {
         this.source = 'mine';
         await this.pickMine(it);
         this.target = c;
-        Object.assign(this.params, recipe.params || {});
+        Object.assign(this.params, { plantFeet: false }, recipe.params || {}); // moves added before Plant feet existed stay as they were
       } else this.base = c;
     } else if (recipe) {
       // Re-edit a Move Maker clip from its original source with its saved settings.
@@ -425,12 +427,12 @@ export class MoveMaker {
       if (m && v) {
         await this.pick(m, v);
         this.target = c;
-        Object.assign(this.params, recipe.params);
+        Object.assign(this.params, { plantFeet: false }, recipe.params);
       } else this.base = c;
     } else {
       this.base = c;
       this.sel = null;
-      this.params = { ...STYLE_DEFAULTS };
+      this.params = startParams();
     }
     this.nameInput.value = c.name;
     this.replaceBtn.textContent = `Replace “${c.name}”`;
@@ -488,19 +490,22 @@ export class MoveMaker {
       }
     }
     const loopNow = p.loop ?? this.base.loop;
-    this.adjBox.append(
+    // (Element.append would write a null out as the text "null".)
+    const parts = [
       h(
         'div',
         { class: 'row wrap', style: { marginTop: '4px' } },
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: p.mirror, onchange: (e) => ((p.mirror = e.target.checked), this.update()) }), 'Mirror (L ↔ R)'),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: loopNow, onchange: (e) => ((p.loop = e.target.checked), this.update()) }), 'Loops'),
-        h('button', { class: 'small', onclick: () => ((this.params = { ...STYLE_DEFAULTS }), this.renderAdjust(), this.update()) }, 'Reset all')
+        h('label', { class: 'check', title: 'Pin each foot while it stands on the floor, so it doesn’t skate on your character’s legs (leg IK, heel-toe roll kept)' }, h('input', { type: 'checkbox', checked: !!p.plantFeet, onchange: (e) => ((p.plantFeet = e.target.checked), this.update()) }), 'Plant feet'),
+        h('button', { class: 'small', onclick: () => ((this.params = startParams()), this.renderAdjust(), this.update()) }, 'Reset all')
       ),
       this.libSel && this.source === 'mine'
         ? h('button', { class: 'primary', title: 'Bake these slider changes into the library move itself, so it becomes your new standard', onclick: () => this.saveIntoLibrary() }, `★ Save these changes into “${this.libSel.name}”`)
         : null,
-      h('div', { class: 'muted', style: { fontSize: '12px' } }, 'Tip: double-click a slider to reset it. After adding, pose the character to change any frame — your changes go on the “My edits” layer on top.')
-    );
+      h('div', { class: 'muted', style: { fontSize: '12px' } }, 'Tip: double-click a slider to reset it. After adding, pose the character to change any frame — your changes go on the “My edits” layer on top.'),
+    ];
+    this.adjBox.append(...parts.filter(Boolean));
   }
 
   rebuild() {

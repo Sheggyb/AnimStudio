@@ -44,6 +44,7 @@ On the start page, press **＋ Add animations** (or drop files on the *Animation
 |---|---|---|
 | [Mixamo](https://www.mixamo.com) (free Adobe account) | Thousands of mocap moves. Format **FBX**, **30 fps**, tick **In Place** for walks and runs, with or without skin | The `.fbx` files, as many at once as you like. They become a *Mixamo Pack*; later downloads are added to it |
 | [Quaternius](https://quaternius.com) | *Universal Animation Library* 1 and 2: free (CC0) packs of game moves | The `.glb` files as they are |
+| Motion capture | `.bvh` files, e.g. the free [CMU Motion Capture Database](http://mocap.cs.cmu.edu), Truebones, Rokoko exports | The `.bvh` files. Units are worked out from the skeleton; Z-up files are stood up. Long takes: Modify › *Find best loop* |
 | Anything else | Animations exported as `.glb` or `.fbx` (Blender, other packs) | Files with the same skeleton go into one pack |
 
 Each source has its own terms: Mixamo animations can be used in your games, but don't redistribute the raw files or packs.
@@ -55,10 +56,11 @@ Each source has its own terms: Mixamo animations can be used in your games, but 
 1. **Open the character:** drop the `.glb` (e.g. from Meshy) on the start screen.
 2. **Give it a skeleton:** Tools › Build skeleton → check the pink reference fits → **Build skeleton**. It's saved as `models/<name>_rigged.glb`; open that file from now on.
 3. **Check the skin:** click **Weights**, then click the Head bone. The whole head (helmet, hair, bandana) should be red. Click the arms and legs too.
-4. **Add moves:** **✦ Moves** → pick one (walk, sword attack, jump…) → **2 · Adjust** (for big-headed characters set *Keep head level* to 80–100%) → **Add as new clip**.
+4. **Add moves:** **✦ Moves** → pick one (walk, sword attack, jump…) → **2 · Adjust** (for big-headed characters set *Keep head level* to 80–100%) → **Add as new clip**. *Plant feet* (on) keeps the feet from sliding on your character's legs.
 5. **Make it yours:** pose any frame. Your changes land on the *My edits* layer above the original motion.
-6. **Something looks off?** See *Troubleshooting* below. Usually: **Rig tab › ✎ Edit skeleton** to move a joint, then **Update skeleton**. Your clips are kept.
-7. **Save** (Ctrl+S) and **Export GLB** (Ctrl+E) for the game.
+6. **Check the feet:** the **Clip tab › Feet** shows when each foot is down, whether it slides or sinks, and the speed to move the character at in your game. *Fix foot sliding* and *Add footstep events* are right there.
+7. **Something looks off?** See *Troubleshooting* below. Usually: **Rig tab › ✎ Edit skeleton** to move a joint, then **Update skeleton**. Your clips are kept.
+8. **Save** (Ctrl+S) and **Export GLB** (Ctrl+E) for the game: pick your engine under *For*.
 
 ---
 
@@ -145,9 +147,12 @@ Mixamo animations may be used in your own games, but don't share the raw files o
 | Overlap / delay | Follow-through: arms or head lag behind the body |
 | Ease timing | Slow-in / slow-out without changing the length |
 | Make seamless loop | Fix a pop at the loop point |
-| Plant feet (IK) | Stop foot sliding after you changed the body |
+| Find best loop | Turn a long take (motion capture) into a seamless loop: keeps the stretch whose end flows back into its start |
+| Fix foot sliding | Pin each foot while it stands on the floor (heel, then ball), with leg IK. Walks in place keep moving with the ground; feet stop sinking into the floor |
+| Add footstep events | `footstep_L` / `footstep_R` where each foot lands, for footstep sounds |
+| Lock feet in place (IK) | Keep the feet exactly where they stand at the start of the range, for standing moves after you changed the body |
 | Mirror left ↔ right | Left-handed versions of attacks |
-| Root motion | Keep the character in place |
+| Root motion | Keep the character in place, remove drift, or put the travel on the root bone for root motion in the engine |
 | Simplify to N fps / Reduce keys | Turn every-frame captured data into a few editable keys |
 | Set interpolation / Clean static channels | Key housekeeping |
 
@@ -173,6 +178,7 @@ Everything can be undone (Ctrl+Z). **Ghost** (G) overlays the original clip so y
 
 - **Layer another clip:** for example, *Sword attack* on the upper body over *Jog* creates a running attack.
 - **Chain clips:** for example, Jump start → Jump → Jump land with crossfades.
+- **Preview transitions** (Tools or Modify tab): Idle → Walk → Run played the way your game blends them, live. Each step plays its times, then crossfades into the next while both keep moving; moves that travel carry on. *Create clip* keeps the result.
 - **Blend two clips:** for example, Walk + Run = jog.
 - **Key poses → pose-to-pose copy:** a clean, sparse version of a captured clip that is easy to rework.
 - **Retarget:** use another character's animations on yours. Bones are matched by anatomy, rotations are transferred relative to each rig's rest pose, and hip motion is scaled to the leg length.
@@ -206,6 +212,10 @@ Rigs with standard bone names (Mixamo `mixamorig:LeftArm`, Unreal `upperarm_l`, 
 | A joint is in the wrong place (shoulder too high, knees off) | Marker placed off when the skeleton was built | **✎ Edit skeleton**, move the joint, **Update skeleton**. Clips are kept |
 | The character floats or sinks in a move | Clips added before version 1.1 (older retargeting lost the hip motion on Mixamo-rigged characters and misjudged leg length) | Add the move again from ✦ Moves (or ✎ Adjust the current clip › *Replace*): feet now keep the source's ground contact. Fine-tune with *Crouch* or a hips key on *My edits* |
 | The character floats or sinks **in the game** | The model's origin isn't at its feet (Meshy models have it in the middle of the body), and engines stand a character on its origin | Export again with **Feet at ground level, y = 0** (on by default since 1.1) |
+| The feet slide or skate on the floor | The move was made for other legs: the stride no longer fits | **Clip tab › Feet → Fix foot sliding** (or tick *Plant feet* in ✦ Moves). Orange steps in the Feet strip slide |
+| The feet slide **in the game** | The game moves the character at another speed than the walk does | Move it at the speed the **Clip tab › Feet** shows (also in the `.events.json` sidecar as `speed`) |
+| A generated walk or run walks backwards | Made before 1.2 | Generate it again (`generate_motion`) |
+| A Mixamo roll or running jump travels twice as far | Added before 1.2 on a character with a root bone | Add the move again |
 | Mixamo file looks bent or floats | A *Without Skin* download that stores an odd rest pose | Download **With Skin** instead |
 | Ctrl+N opens a browser window | Browsers keep Ctrl+N | New clip is **Shift+N** (or **+ New**) |
 | Changes I was told about don't show | The page still runs the old code | Press **F5** in the AnimStudio tab |
@@ -282,16 +292,18 @@ Ask the assistant: *"What is open in AnimStudio?"* It should call the `status` t
 | AnimStudio runs on an unusual port | Set the environment variable `ANIMSTUDIO_PORT` for the MCP server, e.g. `"env": { "ANIMSTUDIO_PORT": "5180" }` next to `"args"` in the config. |
 | You updated AnimStudio | Press F5 in the AnimStudio tab, and restart your AI app if new tools were added. |
 
-**What the AI can do** (42 tools)
-- **Create brand-new motion:** `generate_motion` builds walk, run, jog, sprint, sneak, march, limp and idle cycles from scratch, with parameters for stride, knee lift, arm swing, bounce, lean, tempo and more. `regenerate_motion` tweaks them ("more knee lift").
+**What the AI can do** (44 tools)
+- **Create brand-new motion:** `generate_motion` builds walk, run, jog, sprint, sneak, march, limp and idle cycles from scratch, with parameters for stride, knee lift, arm swing, bounce, lean, tempo and more, feet planted. `regenerate_motion` tweaks them ("more knee lift").
 - **Hand-animate:** `create_clip` and `key_pose` use anatomical angles (swing, spread and twist per bone, plus hip movement), so it can author attacks, gestures, jumps and so on pose by pose.
-- **Restyle anything:** `adjust_motion` (the Move Maker sliders, including `headLevel`) and `apply_modifier` (smooth, amplify, noise, mirror, loop fix, plant feet…).
-- **Use moves:** `list_moves` / `add_move` (animation packs or your ★ moves), `library_save`, `library_build_move`.
-- **See its work:** `snapshot` returns a viewport image from any view and frame.
-- **Project tasks:** `load_model`, `build_skeleton`, `export_glb`, `save_project`, `undo`/`redo`, plus `run_command` for any of the 120+ app commands.
+- **Restyle anything:** `adjust_motion` (the Move Maker sliders, including `headLevel` and `plantFeet`) and `apply_modifier` (smooth, amplify, noise, mirror, loop fix, find best loop, fix foot sliding, footstep events…).
+- **Use moves:** `list_moves` / `add_move` (animation packs or your ★ moves), `library_save`, `library_build_move`, and `sequence_clips` to chain them the way a game blends them.
+- **See and measure its work:** `snapshot` returns a viewport image from any view and frame; `analyze_clip` measures foot sliding, sinking, the loop seam and the speed, and says which tool fixes what.
+- **Project tasks:** `load_model`, `build_skeleton`, `export_glb` (for Godot, Unity, Unreal or Blender, with root motion), `save_project`, `undo`/`redo`, plus `run_command` for any of the 120+ app commands.
 - **Weapons:** `add_sockets`, `list_props`, `attach_prop` / `update_prop` / `remove_prop`, `key_weapon_pose` (place the weapon, IK puts both hands on it), `key_support_hand`, `save_rigged_model`.
 
-Example requests: *"give me a new run, heavier and with more knee lift"*, *"make a 2-second overhead sword swing"*, *"make the idle look tired"*, *"export everything I made"*.
+Every tool tells your AI app whether it only looks (read-only) or changes the project, so the app can ask you before changes. The server speaks both MCP protocol styles: the handshake versions up to 2025-11-25 and the per-request 2026-07-28 version.
+
+Example requests: *"give me a new run, heavier and with more knee lift"*, *"make a 2-second overhead sword swing"*, *"make the idle look tired"*, *"check the walk for foot sliding and fix it"*, *"export everything I made for Godot"*.
 
 Scripts can use the same bridge: `POST http://localhost:5173/api/bridge/call` with `{"cmd":"generate_motion","args":{"type":"run"}}`.
 
@@ -300,17 +312,19 @@ Scripts can use the same bridge: `POST http://localhost:5173/api/bridge/call` wi
 **Export GLB** (Ctrl+E):
 
 - Choose the clips: the checked ones, only yours, only the current clip, or all.
+- Choose your engine under **For** (Godot 4, Unity, Unreal, Blender or any): the dialog says how to bring the file in.
 - Choose *Model + animations* or *Animations only*.
 - Choose the bake rate and the key reduction level.
-- Optionally strip root motion, or write one file per clip.
+- **Travel:** *As it is*, *In place* (no travel), or *On the root bone* for root motion in the engine (the character controller moves by the root; the hips keep their bounce and sway). Skeletons made with Build skeleton have that root bone; Mixamo rigs don't.
+- Optionally write one file per clip.
 - Layers and smooth curves are baked to standard linear keys.
 - "Key every animated bone in every clip" stops poses from leaking between clips in engines.
-- **Events** (Clip tab) such as footsteps or hit frames are written into the GLB (animation `extras`) and into a `<name>.events.json` sidecar, together with loop flags.
+- **Events** (Clip tab) such as footsteps or hit frames are written into the GLB (animation `extras`) and into a `<name>.events.json` sidecar, together with loop flags and, for moves with steps, the **speed** (m/s) to move the character at.
 
 How to import the GLB:
+- **Godot 4:** put the `.glb` in your project; the clips appear in its AnimationPlayer. With *For: Godot 4*, looping clips are named `Walk-loop`: Godot loops them and drops the suffix on import. For root motion, set the AnimationTree's *Root Motion › Track* to the root bone (e.g. `Skeleton3D:Root`).
 - **Unity:** glTFast or UnityGLTF.
-- **Godot:** import as a scene; the clips appear in the AnimationPlayer.
-- **Unreal:** Import → glTF.
+- **Unreal:** Import → glTF. For root motion, tick *Enable Root Motion* on the animation sequence.
 - **Blender:** File › Import › glTF.
 
 **Projects** (Ctrl+S) store your edited and new clips, layers, events, pose library, bone names, and export choices. Unedited original clips are referenced rather than copied, so project files stay small. Work is autosaved every 45 s and offered back when you reopen the model.
@@ -359,9 +373,13 @@ AnimStudio/
     movecatalog.js      move names + categories (snake_case pack names map onto them)
     videomotion.js      (parked) video body landmarks -> clip on the standard rig
     analysis.js         motion profile, key poses, loop error, range of motion, trails
+    contacts.js         foot contacts (heel/ball, treadmill for walks in place), sliding report,
+                        planting feet with leg IK, footstep events
+    rootmotion.js       travel onto the root bone for root motion in game engines
     history.js / project.js
   src/io/
-    loader.js           GLB + FBX (Mixamo) loading; skeleton-only files; FBX hips/bind-pose fixes
+    loader.js           GLB + FBX (Mixamo) + BVH (motion capture) loading; skeleton-only files;
+                        FBX hips/bind-pose fixes; BVH units and Z-up
     rigbuild.js         skeleton builder: auto-find markers, bones, automatic skin weights,
                         rigid head + headRegion() (surface-distance head/body split)
     packs.js            animation packs in animations/ (server list or animations/index.json)
@@ -379,7 +397,7 @@ The design has four parts:
 - **Copy-on-write clips:** every edit clones the touched clip, so undo and redo are just swaps of array references, and live previews are throwaway clones.
 - **No build step:** native ES modules plus an import map for three.js.
 - **One command registry:** menus, the palette, shortcuts, and buttons all run the same commands.
-- **The core can be tested headlessly:** `npm test` (37 tests) covers rig labeling (by bone names and by skeleton shape), IK, layered keying, every modifier, retargeting, gait generation, building animation packs, weapon sockets, video-capture conversion, cycle averaging, keep-head-level and serialization. Tests that need no downloads use a character rigged by AnimStudio itself and generated motion. The rest need real animation data and are reported as *skipped* until you add the Quaternius *Universal Animation Library* packs as `animations/Quaternius Pack 1.glb` and `Quaternius Pack 2.glb` (see `tests/helpers.js`).
+- **The core can be tested headlessly:** `npm test` (63 tests) covers rig labeling (by bone names and by skeleton shape), IK, layered keying, every modifier, retargeting (incl. travel on rigs with and without a root), gait generation, foot contacts and planting, footstep events, root motion, sequences, finding loops, BVH import, engine export, building animation packs, weapon sockets, video-capture conversion, cycle averaging, keep-head-level, serialization and the MCP protocol. Tests that need no downloads use a character rigged by AnimStudio itself and generated motion. The rest need real animation data and are reported as *skipped* until you add the Quaternius *Universal Animation Library* packs as `animations/Quaternius Pack 1.glb` and `Quaternius Pack 2.glb` (see `tests/helpers.js`).
 
 ## Known limits
 

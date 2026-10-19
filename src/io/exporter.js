@@ -4,30 +4,50 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { bakeToThree, cloneClip } from '../core/clip.js';
 import { evalBone, applyRest } from '../core/evaluate.js';
-import { reduceChannel, rootMotion } from '../core/ops.js';
+import { reduceChannel, rootMotion, bakeLayers } from '../core/ops.js';
+import { rootBone, extractRootMotion } from '../core/rootmotion.js';
+import { footReport } from '../core/contacts.js';
 
 const DEG = Math.PI / 180;
 
 /**
+ * The name a clip gets in the file. With a loop suffix (Godot: "-loop"), looping clips get it,
+ * unless their name already says so ("Walk_Loop"); Godot then loops them and drops the suffix.
+ */
+export function exportClipName(clip, loopSuffix = '') {
+  return loopSuffix && clip.loop && !/[-_ ]?(loop|cycle)$/i.test(clip.name) ? clip.name + loopSuffix : clip.name;
+}
+
+/**
  * @param model   loaded model record
  * @param clips   clips to include
- * @param opts    { fps, reduce (deg, 0 = exact), includeMesh, onlyVisible, fillRest, inPlace,
+ * @param opts    { fps, reduce (deg, 0 = exact), includeMesh, onlyVisible, fillRest,
+ *                  rootMotion: 'keep' | 'inplace' (no travel) | 'root' (travel on the root bone),
+ *                  inPlace (old name for rootMotion 'inplace'), loopSuffix ('-loop' for Godot),
  *                  feetAtOrigin: move the character so its feet are at y = 0 (default true) }
  * @returns ArrayBuffer (GLB)
  */
 export async function exportGLB(model, clips, opts = {}) {
-  const { fps = 30, reduce = 0, includeMesh = true, onlyVisible = true, fillRest = true, inPlace = false, feetAtOrigin = true } = opts;
+  const { fps = 30, reduce = 0, includeMesh = true, onlyVisible = true, fillRest = true, inPlace = false, loopSuffix = '', feetAtOrigin = true } = opts;
+  const travel = opts.rootMotion || (inPlace ? 'inplace' : 'keep');
   const rig = model.rig;
   const posTol = rig.height * 0.0005;
   const reducer = (ch, tolDeg) => reduceChannel(ch, ch.type === 'rot' ? tolDeg * DEG : posTol * (tolDeg / 0.5));
 
   const threeClips = clips.map((c) => {
     let src = c;
-    if (inPlace) {
+    if (travel !== 'keep') {
       src = cloneClip(c);
-      rootMotion(src, { rig }, { mode: 'inplace' });
+      if (travel === 'inplace') rootMotion(src, { rig }, { mode: 'inplace' });
+      else if (travel === 'root' && rootBone(rig) >= 0) {
+        // On the motion the game sees: all layers merged first.
+        if (src.layers.length > 1) bakeLayers(src, { rig }, { fps });
+        extractRootMotion(src, { rig }, { fps });
+      }
     }
-    return bakeToThree(src, rig, evalBone, { fps, reduce, reducer: reduce > 0 ? reducer : null });
+    const tc = bakeToThree(src, rig, evalBone, { fps, reduce, reducer: reduce > 0 ? reducer : null });
+    tc.name = exportClipName(c, loopSuffix);
+    return tc;
   });
 
   if (fillRest && threeClips.length > 1) {
@@ -86,11 +106,25 @@ export async function exportGLB(model, clips, opts = {}) {
   }
 }
 
-/** Sidecar with clip metadata (loop flags, events) for game code. */
-export function eventsSidecar(model, clips) {
+/**
+ * Sidecar with clip metadata for game code: loop flags, events, and for moves with steps the speed
+ * to move the character at (m/s) so its feet don't slide in the game.
+ */
+export function eventsSidecar(model, clips, { loopSuffix = '', rootMotion = 'keep', fps = 30 } = {}) {
+  const rig = model.rig;
+  const feet = !!(rig.ik['foot.L'] || rig.ik['foot.R']);
   return {
     model: model.name,
     generator: 'AnimStudio',
-    clips: clips.map((c) => ({ name: c.name, duration: +c.duration.toFixed(4), loop: !!c.loop, events: c.events.map((e) => ({ time: +e.t.toFixed(4), name: e.name })) })),
+    rootMotion: rootMotion === 'root' && rootBone(rig) >= 0 ? rig.names[rootBone(rig)] : null,
+    clips: clips.map((c) => {
+      const out = { name: exportClipName(c, loopSuffix), duration: +c.duration.toFixed(4), loop: !!c.loop, events: c.events.map((e) => ({ time: +e.t.toFixed(4), name: e.name })) };
+      if (out.name !== c.name) out.editorName = c.name;
+      if (feet && c.duration > 0) {
+        const r = footReport(c, rig, { fps });
+        if (r.speed > 0.05) Object.assign(out, { speed: +r.speed.toFixed(3), inPlace: r.inPlace });
+      }
+      return out;
+    }),
   };
 }

@@ -1,6 +1,7 @@
 // Movement modifiers: definitions + a runner with scope selection and live preview.
 import { app } from './state.js';
 import * as ops from '../core/ops.js';
+import { plantFeet, footstepEvents } from '../core/contacts.js';
 import { SMOOTH, LINEAR, EASE, STEP } from '../core/channel.js';
 import { GROUPS, bonesInSet } from '../core/rig.js';
 import { formDialog } from '../ui/dialog.js';
@@ -61,15 +62,6 @@ export const OPS = [
     apply: (c, ctx, v) => ops.loopFix(c, { ...ctx, range: null }, { frames: v.frames, fps: ctx.fps }),
   },
   {
-    id: 'lockfeet',
-    group: 'Motion',
-    title: 'Plant feet (IK)',
-    desc: 'Keep the feet where they are at the start of the range — fixes sliding after you changed the hips or body.',
-    noBones: true,
-    fields: [{ key: 'sides', label: 'Feet', type: 'checklist', value: ['L', 'R'], options: [{ value: 'L', label: 'Left foot' }, { value: 'R', label: 'Right foot' }] }],
-    apply: (c, ctx, v) => ops.lockFeet(c, ctx, { sides: v.sides, fps: ctx.fps }),
-  },
-  {
     id: 'ease',
     group: 'Motion',
     title: 'Ease timing',
@@ -80,6 +72,57 @@ export const OPS = [
       { key: 'strength', label: 'Strength', type: 'range', min: 0, max: 1, step: 0.05, value: 0.6, full: true },
     ],
     apply: (c, ctx, v) => ops.easeTiming(c, ctx, { mode: v.mode, strength: v.strength, fps: ctx.fps }),
+  },
+  // ---------------------------------------------------------------- feet
+  {
+    id: 'footplant',
+    group: 'Feet',
+    title: 'Fix foot sliding',
+    desc: 'Pin each foot while it stands on the floor, so it stops skating (common after putting a move on another body). Heel-toe roll is kept; walks in place keep moving with the ground.',
+    noBones: true,
+    noRange: true,
+    fields: [
+      { key: 'sides', label: 'Feet', type: 'checklist', value: ['L', 'R'], options: [{ value: 'L', label: 'Left foot' }, { value: 'R', label: 'Right foot' }] },
+      { key: 'blend', label: 'Ease in / out (frames)', type: 'range', min: 1, max: 8, step: 1, value: 3, full: true },
+      { key: 'ground', type: 'checkbox', text: 'Also keep the feet above the floor (no sinking)', value: true, full: true },
+    ],
+    apply: (c, ctx, v) => plantFeet(c, ctx, { sides: v.sides, blend: v.blend, ground: v.ground, fps: ctx.fps }),
+  },
+  {
+    id: 'footsteps',
+    group: 'Feet',
+    title: 'Add footstep events',
+    desc: 'An event at every moment a foot lands, for footstep sounds and dust in your game. Replaces footstep events made before.',
+    noBones: true,
+    noRange: true,
+    fields: [{ key: 'naming', label: 'Event names', type: 'seg', value: 'side', full: true, options: [{ value: 'side', label: 'footstep_L / footstep_R' }, { value: 'one', label: 'footstep' }] }],
+    apply: (c, ctx, v) => {
+      const n = footstepEvents(c, ctx.rig, { fps: ctx.fps, name: v.naming === 'one' ? 'footstep' : null });
+      return n ? `${n} footstep event${n === 1 ? '' : 's'}` : 'No footsteps found (the feet never land)';
+    },
+  },
+  {
+    id: 'findloop',
+    group: 'Motion',
+    title: 'Find best loop',
+    desc: 'For long takes (motion capture): keep the stretch whose end flows back into its start most smoothly, and make it a seamless loop.',
+    noBones: true,
+    noRange: true,
+    fields: [
+      { key: 'min', label: 'Shortest loop (s)', type: 'range', min: 0.3, max: 5, step: 0.1, value: 0.6 },
+      { key: 'max', label: 'Longest loop (s)', type: 'range', min: 0.5, max: 20, step: 0.1, value: 4 },
+      { key: 'inPlace', type: 'checkbox', text: 'In place (take out the travel, so the loop doesn’t jump back)', value: true, full: true },
+    ],
+    apply: (c, ctx, v) => ops.makeLoop(c, ctx, { min: v.min, max: Math.max(v.min, v.max), inPlace: v.inPlace, fps: ctx.fps }),
+  },
+  {
+    id: 'lockfeet',
+    group: 'Feet',
+    title: 'Lock feet in place (IK)',
+    desc: 'Keep the feet exactly where they are at the start of the range, for standing moves: after you changed the hips or body, the feet stay put.',
+    noBones: true,
+    fields: [{ key: 'sides', label: 'Feet', type: 'checklist', value: ['L', 'R'], options: [{ value: 'L', label: 'Left foot' }, { value: 'R', label: 'Right foot' }] }],
+    apply: (c, ctx, v) => ops.lockFeet(c, ctx, { sides: v.sides, fps: ctx.fps }),
   },
   // ---------------------------------------------------------------- body
   {
@@ -96,11 +139,14 @@ export const OPS = [
     id: 'rootmotion',
     group: 'Body',
     title: 'Root motion',
-    desc: 'Keep the character in place (games usually move the character in code) or remove net drift only.',
+    desc: 'Keep the character in place (games usually move the character in code), remove net drift only, or put the travel on the root bone for root motion in the engine.',
     noBones: true,
     noRange: true,
-    fields: [{ key: 'mode', label: 'Mode', type: 'seg', value: 'inplace', options: [{ value: 'inplace', label: 'In place' }, { value: 'drift', label: 'Remove drift only' }], full: true }],
-    apply: (c, ctx, v) => ops.rootMotion(c, ctx, { mode: v.mode }),
+    fields: [
+      { key: 'mode', label: 'Mode', type: 'seg', value: 'inplace', options: [{ value: 'inplace', label: 'In place' }, { value: 'drift', label: 'Remove drift only' }, { value: 'root', label: 'On the root bone' }], full: true },
+      { key: 'turn', type: 'checkbox', text: 'The root turns with the body too (moves that change direction)', value: false, full: true, show: (v) => v.mode === 'root' },
+    ],
+    apply: (c, ctx, v) => ops.rootMotion(c, ctx, { mode: v.mode, turn: v.turn, fps: ctx.fps }),
   },
   // ---------------------------------------------------------------- keys
   {

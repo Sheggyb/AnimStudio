@@ -9,6 +9,7 @@ import { attachProp, updateProp, removeProp } from './props.js';
 import { BUILTIN_PROPS } from '../io/propshapes.js';
 import { SOCKETS } from '../io/sockets.js';
 import { OPS, resolveBones } from './oprunner.js';
+import * as ops from '../core/ops.js';
 import { makeClip, makeLayer, cloneClip, getTrack, pruneLayer, TYPES, clipKeyCount } from '../core/clip.js';
 import { findKey, removeKeys, SMOOTH, LINEAR, EASE, STEP } from '../core/channel.js';
 import { evalBone, makeXform } from '../core/evaluate.js';
@@ -22,7 +23,11 @@ import { buildCatalog, CATEGORIES } from '../core/movecatalog.js';
 import { retargetClip } from '../core/retarget.js';
 import { loadAnimSource } from '../io/animsource.js';
 import { listLibrary, loadMove, saveMove, buildStandardMove, moveOnCharacter, standardRig } from '../io/library.js';
-import { exportGLB } from '../io/exporter.js';
+import { exportGLB, eventsSidecar, exportClipName } from '../io/exporter.js';
+import { rootBone } from '../core/rootmotion.js';
+import { loopError, motionProfile, keyPoseTimes } from '../core/analysis.js';
+import { footReport } from '../core/contacts.js';
+import { GROUPS } from '../core/rig.js';
 import { hooks } from './actions.js';
 import { toast } from '../ui/dom.js';
 import { packSources } from '../io/packs.js';
@@ -327,6 +332,51 @@ const H = {
     return { applied: def.title, message: typeof msg === 'string' ? msg : undefined, clip: clipInfo(edited) };
   },
 
+  async sequence_clips({ steps = [], name = null }) {
+    need();
+    if (!steps.length) throw new Error('Give steps: [{clip, repeat, blend}, ...]');
+    const list = steps.map((s) => ({ clip: findClip(s.clip), repeat: s.repeat ?? 1, blend: s.blend ?? 6 }));
+    return addAndShow(ops.sequenceClips(list, { rig: app.rig }, { fps: fps(), name }), 'AI: sequence clips');
+  },
+
+  async analyze_clip({ clip = null }) {
+    need();
+    const c = findClip(clip);
+    const rig = app.rig;
+    const f = (t) => Math.round(t * fps());
+    const cm = (x) => +(x * 100).toFixed(1);
+    const out = { clip: c.name, frames: frames(c.duration), seconds: +c.duration.toFixed(3), loop: !!c.loop, events: c.events.map((e) => ({ frame: f(e.t), name: e.name })) };
+    const advice = [];
+    if (c.duration > 0) {
+      const loop = loopError(c, rig);
+      const seamless = loop.relative < 0.012 && loop.angle < 6;
+      out.loop_gap = { percent_of_height: +(loop.relative * 100).toFixed(2), degrees: +loop.angle.toFixed(1), seamless };
+      if (c.loop && !seamless) advice.push('Marked as looping but the ends differ: apply_modifier op "loopfix".');
+      const prof = motionProfile(c, rig, { fps: fps() });
+      const total = Object.values(prof.groupTravel).reduce((a, b) => a + b, 0) || 1;
+      out.motion_share = Object.fromEntries(GROUPS.filter((g) => prof.groupTravel[g.id] > 0).map((g) => [g.label, Math.round((prof.groupTravel[g.id] / total) * 100)]));
+      out.key_pose_frames = keyPoseTimes(prof).map(f);
+    }
+    if (c.duration > 0 && (rig.ik['foot.L'] || rig.ik['foot.R'])) {
+      const r = footReport(c, rig, { fps: fps() });
+      out.feet = {
+        steps: r.steps.map((s) => ({ foot: s.side, from_frame: f(s.from), to_frame: f(s.to), slide_cm: cm(s.slide) })),
+        max_slide_cm: cm(r.maxSlide),
+        sinks_cm: cm(r.sink),
+        floating_cm: cm(r.floating),
+        speed_m_per_s: +r.speed.toFixed(3),
+        in_place: r.inPlace,
+      };
+      if (r.maxSlide > 0.015) advice.push(`Feet slide up to ${cm(r.maxSlide)} cm while planted: apply_modifier op "footplant".`);
+      if (r.sink) advice.push(`Feet sink ${cm(r.sink)} cm into the floor: apply_modifier op "footplant" (ground on).`);
+      if (r.floating) advice.push(`The feet never touch the floor (lowest ${cm(r.floating)} cm up): fine for a jump or fall, otherwise lower the hips.`);
+      if (r.steps.length && !c.events.some((e) => /^footstep/.test(e.name))) advice.push('No footstep events yet: apply_modifier op "footsteps" adds one where each foot lands.');
+      if (r.inPlace && r.speed > 0.05) advice.push(`Walks in place at ${r.speed.toFixed(2)} m/s: move the character at that speed in the game so the feet don't slide there.`);
+    }
+    out.advice = advice;
+    return out;
+  },
+
   async list_moves({ source = 'reference', category = null, query = null }) {
     if (source === 'library') {
       const lib = await listLibrary();
@@ -357,11 +407,15 @@ const H = {
       base = retargetClip(src.byName.get(v.clip), src.rig, app.rig, { mode: 'auto', name: m.key }).clip;
       title = m.key;
     }
-    const clip = Object.keys(params).length ? applyStyle(base, app.rig, params, { fps: fps() }) : base;
+    // Like ✦ Moves: the feet are planted unless asked otherwise, and hand edits go on a layer on top.
+    const clip = applyStyle(base, app.rig, { plantFeet: true, ...params }, { fps: fps() });
     clip.name = name || title;
     clip.meta = { source: 'derived', note: `via AI from ${from_library ? 'my library' : 'pack'}: ${move}` };
-    clip.layers.push(makeLayer('My edits', 'additive')); // same as ✦ Moves: hand edits go on top
-    return addAndShow(clip, 'AI: add move');
+    const edits = makeLayer('My edits', 'additive');
+    clip.layers.push(edits);
+    const info = addAndShow(clip, 'AI: add move');
+    app.setLayer(edits.id);
+    return info;
   },
 
   async library_save({ clip = null, name = null, category = 'other' }) {
@@ -424,18 +478,25 @@ const H = {
     return { view };
   },
 
-  async export_glb({ name = null, which = 'mine', content = 'model' }) {
+  async export_glb({ name = null, which = 'mine', content = 'model', engine = 'any', root_motion = 'keep', loop_names = true, fps: rate = 30, reduce = 0, sidecar = true }) {
     need();
     const base = app.model.name.replace(/\.(glb|gltf)$/i, '');
     const mine = (c) => !c.meta.original || app.originals.get(c.meta.originalName) !== c;
     const clips = which === 'all' ? app.clips : which === 'current' ? [app.committedClip] : which === 'checked' ? app.clips.filter((c) => app.isExported(c.id)) : app.clips.filter(mine);
     if (!clips.length) throw new Error('No clips to export');
-    const glb = await exportGLB(app.model, clips, { fps: 30, includeMesh: content !== 'anim', fillRest: true });
+    if (root_motion === 'root' && rootBone(app.rig) < 0) throw new Error('This skeleton has no root bone above the hips: use root_motion "keep" or "inplace".');
+    const loopSuffix = engine === 'godot' && loop_names ? '-loop' : '';
+    const glb = await exportGLB(app.model, clips, { fps: rate, reduce, includeMesh: content !== 'anim', fillRest: true, rootMotion: root_motion, loopSuffix });
     hooks.refreshPose();
     const file = (name || `${base}_anim`).replace(/\.glb$/i, '') + '.glb';
     const r = await api.exportFile(file, new Blob([glb], { type: 'model/gltf-binary' }));
+    let side = null;
+    if (sidecar) {
+      const data = eventsSidecar(app.model, clips, { loopSuffix, rootMotion: root_motion, fps: rate });
+      side = (await api.exportFile(file.replace(/\.glb$/i, '.events.json'), new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))).path;
+    }
     toast(`AI exported ${clips.length} clip(s) → ${file}`, 'ok');
-    return { path: r.path, clips: clips.map((c) => c.name), bytes: r.size };
+    return { path: r.path, sidecar: side, clips: clips.map((c) => exportClipName(c, loopSuffix)), bytes: r.size };
   },
 
   async open_project({ name }) {

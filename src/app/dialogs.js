@@ -3,12 +3,13 @@ import * as THREE from 'three';
 import { app } from './state.js';
 import { api } from '../io/api.js';
 import { exportGLB, eventsSidecar } from '../io/exporter.js';
-import { readGLTF, readFBX, buildModel, convertClips, nameMatch } from '../io/loader.js';
+import { readGLTF, readModelFile, buildModel, convertClips, nameMatch } from '../io/loader.js';
 import { retargetClip } from '../core/retarget.js';
 import * as ops from '../core/ops.js';
 import { cloneClip, serializeClip, deserializeClip, clipFromThree } from '../core/clip.js';
 import { GROUPS, bonesInSet } from '../core/rig.js';
 import { motionProfile, keyPoseTimes } from '../core/analysis.js';
+import { rootBone } from '../core/rootmotion.js';
 import { formDialog, openModal, alertDialog } from '../ui/dialog.js';
 import { h, toast, downloadBlob, fmtBytes, clear } from '../ui/dom.js';
 import { busy, openModel, openProjectByName, openProjectJson } from './session.js';
@@ -34,6 +35,8 @@ export async function exportDialog({ only = null } = {}) {
   const checked = app.clips.filter((c) => app.isExported(c.id));
   const feet = app.rig.ground; // height of the feet relative to the model's origin
   const offText = Math.abs(feet) > app.rig.height * 0.01 ? ` (this model's feet are ${Math.abs(feet).toFixed(2)} ${feet > 0 ? 'above' : 'below'} its origin)` : '';
+  const root = rootBone(app.rig);
+  const tip = (engine, text) => ({ key: `tip_${engine}`, type: 'info', value: text, full: true, show: (x) => x.engine === engine });
   const v = await formDialog({
     title: 'Export GLB',
     intro: 'GLB (binary glTF) imports directly into Unity, Unreal, Godot, Blender and web engines. Layers and smooth curves are baked to standard linear keys.',
@@ -54,6 +57,24 @@ export async function exportDialog({ only = null } = {}) {
           { value: 'all', label: `All (${app.clips.length})` },
         ],
       },
+      {
+        key: 'engine',
+        label: 'For',
+        type: 'seg',
+        value: app.settings.exportEngine || 'any',
+        full: true,
+        options: [
+          { value: 'any', label: 'Any engine' },
+          { value: 'godot', label: 'Godot 4' },
+          { value: 'unity', label: 'Unity' },
+          { value: 'unreal', label: 'Unreal' },
+          { value: 'blender', label: 'Blender' },
+        ],
+      },
+      tip('godot', 'Godot: put the .glb in your project; the clips appear in its AnimationPlayer. Looping clips are named “…-loop”: Godot loops them and drops the suffix. For root motion, set Root Motion › Track of your AnimationTree to the root bone (e.g. Skeleton3D:Root).'),
+      tip('unity', 'Unity: import with glTFast or UnityGLTF. Loop flags, footstep events and each move’s speed are in the .events.json sidecar.'),
+      tip('unreal', 'Unreal: Import → glTF. For root motion, put the travel on the root bone and tick Enable Root Motion on the animation sequence.'),
+      tip('blender', 'Blender: File › Import › glTF 2.0; every clip becomes an action on the armature.'),
       { key: 'content', label: 'Content', type: 'seg', value: 'model', options: [{ value: 'model', label: 'Model + animations' }, { value: 'anim', label: 'Animations only (skeleton)' }] },
       { key: 'fps', label: 'Bake rate (fps)', type: 'select', value: '30', options: ['15', '24', '30', '60'] },
       {
@@ -69,8 +90,17 @@ export async function exportDialog({ only = null } = {}) {
           { value: '1.2', label: 'Strong (small files)' },
         ],
       },
+      {
+        key: 'rootMotion',
+        label: 'Travel',
+        type: 'seg',
+        value: 'keep',
+        full: true,
+        options: [{ value: 'keep', label: 'As it is' }, { value: 'inplace', label: 'In place (no travel)' }, ...(root >= 0 ? [{ value: 'root', label: `On the root bone (root motion)` }] : [])],
+        hint: root >= 0 ? `Root motion: the travel goes on “${app.rig.names[root]}” and the engine moves the character by it.` : 'This skeleton has no root bone above the hips (Mixamo rigs), so the travel stays on the hips.',
+      },
+      { key: 'loopNames', type: 'checkbox', text: 'Name looping clips “<name>-loop” so Godot loops them', value: true, full: true, show: (x) => x.engine === 'godot' },
       { key: 'fillRest', type: 'checkbox', text: 'Key every animated bone in every clip (prevents poses leaking between clips in engines)', value: true, full: true },
-      { key: 'inPlace', type: 'checkbox', text: 'Remove root motion (in place)', value: false, full: true },
       { key: 'feetAtOrigin', type: 'checkbox', text: `Feet at ground level, y = 0, so the character stands on the floor in your engine${offText}`, value: true, full: true },
       { key: 'onlyVisible', type: 'checkbox', text: 'Only visible mesh parts', value: true, full: true },
       { key: 'sidecar', type: 'checkbox', text: 'Also write <name>.events.json (loop flags + events for game code)', value: true, full: true },
@@ -78,12 +108,14 @@ export async function exportDialog({ only = null } = {}) {
     ],
   });
   if (!v) return;
+  app.set('exportEngine', v.engine);
   const mineSet = (c) => !c.meta.original || app.originals.get(c.meta.originalName) !== c;
   let clips = v.which === 'current' ? [only || app.clip].filter(Boolean) : v.which === 'all' ? app.clips : v.which === 'mine' ? app.clips.filter(mineSet) : checked;
   if (!clips.length) return toast('No clips to export', 'err');
   let name = v.name.trim() || `${baseName()}_anim.glb`;
   if (!/\.glb$/i.test(name)) name += '.glb';
-  const opts = { fps: +v.fps, reduce: +v.reduce, includeMesh: v.content === 'model', onlyVisible: v.onlyVisible, fillRest: v.fillRest, inPlace: v.inPlace, feetAtOrigin: v.feetAtOrigin };
+  const loopSuffix = v.engine === 'godot' && v.loopNames ? '-loop' : '';
+  const opts = { fps: +v.fps, reduce: +v.reduce, includeMesh: v.content === 'model', onlyVisible: v.onlyVisible, fillRest: v.fillRest, rootMotion: v.rootMotion, loopSuffix, feetAtOrigin: v.feetAtOrigin };
   const jobs = v.split ? clips.map((c) => ({ clips: [c], name: name.replace(/\.glb$/i, `_${c.name.replace(/[^\w.-]+/g, '_')}.glb`) })) : [{ clips, name }];
   const b = busy('Exporting…');
   const results = [];
@@ -96,7 +128,7 @@ export async function exportDialog({ only = null } = {}) {
       results.push(await deliver(blob, job.name));
     }
     if (v.sidecar) {
-      const side = new Blob([JSON.stringify(eventsSidecar(app.model, clips), null, 2)], { type: 'application/json' });
+      const side = new Blob([JSON.stringify(eventsSidecar(app.model, clips, { loopSuffix, rootMotion: v.rootMotion, fps: app.fps }), null, 2)], { type: 'application/json' });
       await deliver(side, name.replace(/\.glb$/i, '.events.json'));
     }
   } catch (e) {
@@ -256,7 +288,7 @@ export function pickFiles(accept) {
  * Returns true when something was added.
  */
 export async function addAnimations(files = null) {
-  files ??= await pickFiles('.fbx,.glb');
+  files ??= await pickFiles('.fbx,.glb,.bvh');
   if (!files?.length) return false;
   if (!(await api.ping())) {
     toast('Adding animations needs the AnimStudio server: start it with start.bat', 'err');
@@ -278,8 +310,8 @@ export async function addAnimations(files = null) {
     };
     const loose = [];
     for (const f of files) {
-      if (!/\.(fbx|glb)$/i.test(f.name)) {
-        skipped.push(`${f.name}: not an .fbx or .glb file`);
+      if (!/\.(fbx|glb|bvh)$/i.test(f.name)) {
+        skipped.push(`${f.name}: not an .fbx, .glb or .bvh file`);
         continue;
       }
       const buffer = await f.arrayBuffer();
@@ -340,10 +372,10 @@ export async function importAnimFiles(files) {
       try {
         const lower = file.name.toLowerCase();
         const buf = await file.arrayBuffer();
-        const gltf = lower.endsWith('.fbx') ? await readFBX(buf) : await readGLTF(buf);
+        const gltf = await readModelFile(buf, lower);
         if (!gltf.animations.length) throw new Error('no animation in this file');
         const model = buildModel(gltf, file.name);
-        const base = file.name.replace(/\.(fbx|glb|gltf)$/i, '').replace(/[_-]+/g, ' ').trim();
+        const base = file.name.replace(/\.(fbx|glb|gltf|bvh)$/i, '').replace(/[_-]+/g, ' ').trim();
         const clips = convertClips(model, gltf.animations, { source: 'imported' }).filter((c) => c.duration > 0);
         for (const c of clips) {
           // Mixamo names every clip "mixamo.com"; the file name says what it is.
@@ -368,10 +400,10 @@ export async function importAnimFiles(files) {
 }
 
 export async function importFile(file) {
-  if (!file) file = await pickFile('.glb,.gltf,.json,.fbx');
+  if (!file) file = await pickFile('.glb,.gltf,.json,.fbx,.bvh');
   if (!file) return;
   const lower = file.name.toLowerCase();
-  if (lower.endsWith('.fbx')) return importAnimFiles([file]);
+  if (/\.(fbx|bvh)$/.test(lower)) return importAnimFiles([file]);
   try {
     if (lower.endsWith('.json')) {
       const json = JSON.parse(await file.text());
@@ -479,6 +511,72 @@ export async function concatDialog() {
   const c = ops.concatClips(app.clip, b, ctx(), { blend: v.blend, fps: app.fps, name: v.name || `${app.clip.name}_then_${b.name}` });
   app.addClip(c, 'Chain clips');
   toast(`Created ${c.name}`, 'ok');
+}
+
+/**
+ * Preview transitions: clips one after another as a game blends them (Idle → Walk → Run), every
+ * step repeated and crossfaded into the next, playing live in the viewport. Can become a clip.
+ */
+export async function sequenceDialog({ viewport, moveMaker } = {}) {
+  if (!app.clip) return;
+  if (moveMaker?.active) moveMaker.close();
+  app.setPlaying(false);
+  const playable = app.clips.filter((c) => c.duration > 0);
+  const next = playable[(playable.indexOf(app.committedClip) + 1) % playable.length];
+  const steps = [
+    { id: app.clipId, repeat: app.clip.loop ? 2 : 1, blend: 8 },
+    ...(next && next.id !== app.clipId ? [{ id: next.id, repeat: next.loop ? 2 : 1, blend: 8 }] : []),
+  ];
+  const rows = h('div', { class: 'col', style: { gap: '6px' } });
+  const info = h('div', { class: 'muted', style: { fontSize: '12px' } });
+  let seq = null;
+  const build = () => {
+    try {
+      seq = ops.sequenceClips(steps.map((s) => ({ clip: app.clips.find((c) => c.id === s.id), repeat: s.repeat, blend: s.blend })), ctx(), { fps: app.fps });
+      viewport?.setPreview(seq, { keepTime: false });
+      info.textContent = `${(seq.duration).toFixed(2)} s · ${Math.round(seq.duration * app.fps)} frames, playing in the viewport`;
+    } catch (e) {
+      seq = null;
+      info.textContent = e.message;
+    }
+  };
+  const render = () => {
+    clear(rows);
+    steps.forEach((s, k) => {
+      const last = k === steps.length - 1;
+      rows.append(
+        h(
+          'div',
+          { class: 'seq-step' },
+          h('span', { class: 'seq-n' }, String(k + 1)),
+          h('select', { onchange: (e) => ((s.id = e.target.value), build()) }, playable.map((c) => h('option', { value: c.id, selected: c.id === s.id }, c.name))),
+          h('label', { title: 'How many times it plays' }, '×', h('input', { type: 'number', min: 1, max: 20, step: 1, value: s.repeat, onchange: (e) => ((s.repeat = Math.max(1, +e.target.value || 1)), build()) })),
+          h('label', { title: 'Crossfade into the next step (frames)', class: last ? 'seq-off' : '' }, '⤳', h('input', { type: 'number', min: 0, max: 60, step: 1, value: s.blend, disabled: last, onchange: (e) => ((s.blend = Math.max(0, +e.target.value || 0)), build()) }), 'f'),
+          h('button', { class: 'ghost icon small', title: 'Remove this step', disabled: steps.length < 2, onclick: () => (steps.splice(k, 1), render(), build()) }, '✕')
+        )
+      );
+    });
+  };
+  render();
+  build();
+  const add = h('button', { class: 'small', onclick: () => (steps.push({ id: steps[steps.length - 1].id, repeat: 1, blend: 8 }), render(), build()) }, '+ Add step');
+  const play = h('button', { class: 'small', title: 'Pause / play the preview', onclick: () => ((viewport.previewPlaying = viewport.previewPlaying === false), (play.textContent = viewport.previewPlaying === false ? '▶ Play' : '❚❚ Pause')) }, '❚❚ Pause');
+  if (viewport) viewport.previewPlaying = true;
+  const made = await openModal({
+    title: 'Preview transitions',
+    side: true,
+    body: h('div', { class: 'col' }, h('p', {}, 'Clips one after another, the way your game blends them: each step plays its times, then crossfades into the next while both keep moving. Try Idle → Walk → Run.'), rows, h('div', { class: 'row' }, add), info),
+    footLeft: play,
+    buttons: [
+      { label: 'Close', value: false },
+      { label: 'Create clip', primary: true, value: true },
+    ],
+  }).result;
+  viewport?.setPreview(null);
+  if (made && seq) {
+    app.addClip(seq, 'Sequence clips');
+    toast(`Created “${seq.name}”`, 'ok');
+  }
 }
 
 export async function blendDialog() {
@@ -673,7 +771,7 @@ export async function welcome() {
   const mine = models;
   const openFile = () =>
     open(async () => {
-      const f = await pickFile('.glb,.gltf,.fbx');
+      const f = await pickFile('.glb,.gltf,.fbx,.bvh');
       return f && openModel(await f.arrayBuffer(), f.name);
     });
 
@@ -713,9 +811,9 @@ export async function welcome() {
   const add = async (files) => (await addAnimations(files)) && welcome();
   const addCard = h(
     'button',
-    { class: 'w-model w-add', title: 'Add animation files you downloaded (Mixamo .fbx, packs as .glb)', onclick: () => add() },
+    { class: 'w-model w-add', title: 'Add animation files you downloaded (Mixamo .fbx, packs as .glb, motion capture as .bvh)', onclick: () => add() },
     h('div', { class: 'w-avatar' }, '＋'),
-    h('div', { class: 'w-info' }, h('div', { class: 'w-title' }, 'Add animations'), h('div', { class: 'w-meta' }, '.fbx or .glb — or drop them here'))
+    h('div', { class: 'w-info' }, h('div', { class: 'w-title' }, 'Add animations'), h('div', { class: 'w-meta' }, '.fbx, .glb or .bvh — or drop them here'))
   );
   const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
   const whereToGet = h(
@@ -814,7 +912,7 @@ export async function welcome() {
           ? h('div', { class: 'w-models' }, mine.sort((a, b) => b.mtime - a.mtime).map((m) => modelCard(m)))
           : h('div', { class: 'w-empty' }, 'No characters yet. Open a .glb (or drop one anywhere), then Tools › Build skeleton — the rigged model is saved here.')
       ),
-      h('div', { class: 'w-drop', onclick: openFile }, h('b', {}, 'Drop a character (.glb or .fbx) anywhere'), h('span', { class: 'muted' }, 'or click to browse — Meshy, Blender, Mixamo exports… With a character open, drop Mixamo animations (.fbx) to add them.')),
+      h('div', { class: 'w-drop', onclick: openFile }, h('b', {}, 'Drop a character (.glb or .fbx) anywhere'), h('span', { class: 'muted' }, 'or click to browse — Meshy, Blender, Mixamo exports… With a character open, drop Mixamo animations (.fbx) or motion capture (.bvh) to add them.')),
       packsSection,
       !models.length && !api.online ? h('div', { class: 'w-empty' }, 'Server not reachable — start AnimStudio with start.bat. You can still drop a .glb file here.') : null,
       h(

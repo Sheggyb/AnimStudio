@@ -13,7 +13,7 @@ For the full user guide, see [README.md](README.md); for what changed recently, 
 1. **Animate your own characters:** Meshy and other models get a clean humanoid skeleton with good skin weights. The head and anything hanging off it stay solid.
 2. **Start from good motion, then make it yours:** take moves from animation packs or Mixamo, adjust them with sliders, and hand-edit them on a separate layer.
 3. **Own the result:** your saved moves live on AnimStudio's own neutral skeleton (★ My moves) and work on any character.
-4. **AI-assisted:** Claude can create, adjust and check motion through 42 MCP tools.
+4. **AI-assisted:** Claude can create, adjust and check motion through 44 MCP tools.
 
 ---
 
@@ -46,8 +46,11 @@ For the full user guide, see [README.md](README.md); for what changed recently, 
 | **Modifiers** | Exaggerate, smooth, add life, overlap, ease timing, loop fix, plant feet, mirror, root motion, key reduction (live preview) |
 | **Retargeting** | Moves animation between different skeletons, including Blender Z-up rigs and Mixamo |
 | **Weapons & props** | Sockets `Weapon_R/L/Back`, prop preview (built-in rifle/bazooka/pistol/grenade or any GLB in `props/`) |
-| **Export** | GLB with model + animations or animations only; bake/reduce; events sidecar JSON |
-| **AI / MCP** | 42 tools: status, snapshot, moves, sliders, key poses, generated gaits, skeleton, export… |
+| **Export** | GLB with model + animations or animations only; presets for Godot, Unity, Unreal, Blender (Godot loop names); travel as is, in place or on the root bone; bake/reduce; events sidecar JSON with speeds |
+| **Feet** | Knows when each foot is down (heel, then ball); *Fix foot sliding* pins planted feet with leg IK, *Add footstep events*; the Clip tab shows sliding, sinking and the speed to move the character at in a game |
+| **Transitions** | *Preview transitions*: Idle → Walk → Run played live the way a game blends them; can become a clip |
+| **Motion capture** | `.bvh` files (CMU, Truebones, Rokoko…) as clips or packs; *Find best loop* turns a long take into a seamless loop |
+| **AI / MCP** | 44 tools: status, snapshot, moves, sliders, key poses, generated gaits, skeleton, export… |
 | **Parked** | Motion from video (MediaPipe): the code and tests are kept, the UI is hidden |
 
 ---
@@ -81,6 +84,7 @@ AnimStudio/
     channel.js clip.js evaluate.js keying.js     keys, clips, layers, evaluation
     rig.js anatomy.js                            skeleton analysis, anatomical pose controls
     ik.js ops.js style.js analysis.js            IK, modifiers, sliders (keepHeadLevel), analysis
+    contacts.js rootmotion.js                    foot contacts and planting, root motion for engines
     retarget.js standard.js gait.js              retargeting, standard skeleton, gait generator
     movecatalog.js history.js project.js         move names/categories, undo, project files
     videomotion.js                               (parked) video landmarks -> clip
@@ -88,7 +92,7 @@ AnimStudio/
                              library, animsource, api, sockets, propshapes, posetrack (parked)
   src/app/                   state, commands, actions, dialogs (start page), session, AI bridge
   src/ui/                    viewport, dope sheet, graph, panels, movemaker, rigbuilder, props
-  mcp/server.mjs             MCP server (42 tools)
+  mcp/server.mjs             MCP server (44 tools)
   models/                    your characters (rigged models saved by the builder)
   animations/                animation packs (Quaternius Pack 1 & 2, CC0) + index.json
   library/                   ★ My moves (*.move.json)
@@ -126,7 +130,7 @@ AnimStudio/
 
 ## Testing
 
-- `npm test` runs **37** tests: rig labelling, IK (incl. pole vectors), layered keying, modifiers, retargeting, gait generation on T-pose rigs, building animation packs, weapon sockets, video-capture conversion round trips, cycle averaging and keep-head-level.
+- `npm test` runs **63** tests, including foot contacts, root motion, sequences, loops, BVH, engine export and the MCP protocol, plus: rig labelling, IK (incl. pole vectors), layered keying, modifiers, retargeting, gait generation on T-pose rigs, building animation packs, weapon sockets, video-capture conversion round trips, cycle averaging and keep-head-level.
 - Tests that need real animation data are *skipped* until the Quaternius packs are in `animations/` (see `tests/helpers.js`); everything else uses a character rigged by AnimStudio and generated motion.
 - The UI is checked with headless-browser runs (chrome-headless-shell) against a second server on another port.
 
@@ -139,10 +143,8 @@ AnimStudio/
 **Ideas for next:**
 1. **Text to motion** with a local model (e.g. NVIDIA Kimodo): type "heavy overhead sword swing", get a clip.
 2. **Motion from video** back on (parked): webcam/phone capture with cycle averaging.
-3. **Godot export preset:** naming, loops and root motion ready for AnimationTree, then test in the game.
-4. **Transition preview:** Idle → Walk → Run → Attack as the game would blend it.
-5. **Weapons:** two-hand grips on the new packs' sword/pistol moves (the gun work was parked).
-6. Fingers and tails in the skeleton builder.
+3. **Weapons:** two-hand grips on the new packs' sword/pistol moves (the gun work was parked).
+4. Fingers and tails in the skeleton builder.
 
 ---
 

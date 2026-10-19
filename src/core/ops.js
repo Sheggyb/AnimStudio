@@ -19,10 +19,11 @@ import {
   findKey,
 } from './channel.js';
 import { forEachChannel, getTrack, pruneLayer, makeClip, makeLayer, cloneClip, TYPES } from './clip.js';
-import { evalBone, applyPose, makeXform } from './evaluate.js';
+import { evalBone, applyPose, makeXform, evalWorld } from './evaluate.js';
 import { mirrorLocalRot, mirrorLocalPos, mirrorIndex, makeScratchSkeleton } from './rig.js';
 import { solveTwoBone, bendHintFor } from './ik.js';
 import { keyBone } from './keying.js';
+import { extractRootMotion } from './rootmotion.js';
 
 const DEG = Math.PI / 180;
 const EPS = KEY_EPS;
@@ -479,8 +480,78 @@ export function loopFix(clip, ctx, { frames = 6, fps = 30 } = {}) {
   clip.loop = true;
 }
 
-/** Root motion: 'inplace' locks horizontal movement, 'drift' removes only the net travel. */
-export function rootMotion(clip, ctx, { mode = 'inplace' } = {}) {
+/**
+ * The best loop in a long take (motion capture): the stretch, between `min` and `max` seconds
+ * long, whose end flows back into its start most smoothly (same pose and the same way of moving).
+ * Returns { from, to, error (degrees per bone at the seam) } or null when the take is too short.
+ */
+export function findLoop(clip, ctx, { min = 0.6, max = 4, fps = 30 } = {}) {
+  const rig = ctx.rig;
+  if (!(clip.duration > min)) return null;
+  const times = frameTimes(0, clip.duration, fps);
+  const n = times.length;
+  const core = [...rig.core].filter((i) => i !== rig.special.root && rig.group[i] !== 'attach');
+  const hips = rig.special.hips;
+  const L = hips >= 0 ? rig.restWorld.p[hips].y - rig.ground || rig.height / 2 : rig.height / 2;
+  // Per frame: every body bone's local rotation and the hips' height (travel doesn't matter).
+  const Q = [],
+    Y = [];
+  const ws = { lq: [], lp: [], wq: [], wp: [] };
+  for (const t of times) {
+    evalWorld(clip, t, rig, ws);
+    const row = new Float32Array(core.length * 4);
+    core.forEach((i, k) => ws.lq[i].toArray(row, k * 4));
+    Q.push(row);
+    Y.push(hips >= 0 ? ws.wp[hips].y : 0);
+  }
+  // Distance between two frames: sin²(half angle) summed over the bones, plus the hips' height.
+  const d = (i, j) => {
+    const a = Q[i],
+      b = Q[j];
+    let s = 0;
+    for (let k = 0; k < a.length; k += 4) {
+      const dot = a[k] * b[k] + a[k + 1] * b[k + 1] + a[k + 2] * b[k + 2] + a[k + 3] * b[k + 3];
+      s += 1 - dot * dot;
+    }
+    const dy = (Y[i] - Y[j]) / L;
+    return s + 50 * dy * dy;
+  };
+  const minF = Math.max(2, Math.round(min * fps));
+  const maxF = Math.max(minF, Math.round(max * fps));
+  let best = null;
+  for (let a = 0; a < n; a++)
+    for (let b = a + minF; b <= Math.min(n - 1, a + maxF); b++) {
+      // The seam and the frames around it: the motion must carry on the same way.
+      let D = d(a, b),
+        w = 1;
+      if (a > 0) (D += 0.5 * d(a - 1, b - 1)), (w += 0.5);
+      if (b < n - 1) (D += 0.5 * d(a + 1, b + 1)), (w += 0.5);
+      D /= w;
+      if (!best || D < best.D - 1e-9) best = { a, b, D };
+    }
+  if (!best) return null;
+  const error = ((2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, best.D) / core.length)))) * 180) / Math.PI;
+  return { from: times[best.a], to: times[best.b], error };
+}
+
+/** Trim a take to its best loop (findLoop), optionally in place, and make the seam seamless. */
+export function makeLoop(clip, ctx, { min = 0.6, max = 4, inPlace = true, fps = 30 } = {}) {
+  const r = findLoop(clip, ctx, { min, max, fps });
+  if (!r) return `The clip is shorter than ${min.toFixed(1)} s: nothing to search`;
+  trim(clip, r.from, r.to);
+  clip.loop = true;
+  if (inPlace) rootMotion(clip, ctx, { mode: 'drift' }); // the travel would jump back at every loop
+  loopFix(clip, { ...ctx, li: 0, bones: null, range: null }, { frames: 3, fps });
+  const f = (t) => Math.round(t * fps);
+  return `Loop: frames ${f(r.from)}–${f(r.to)} (${(r.to - r.from).toFixed(2)} s), seam ${r.error.toFixed(1)}° before smoothing`;
+}
+
+/**
+ * Root motion: 'inplace' locks horizontal movement, 'drift' removes only the net travel, 'root'
+ * moves the travel onto the root bone (for root motion in game engines; see rootmotion.js).
+ */
+export function rootMotion(clip, ctx, { mode = 'inplace', turn = false, fps = 30 } = {}) {
+  if (mode === 'root') return extractRootMotion(clip, ctx, { turn, fps });
   const rig = ctx.rig;
   const axes = [rig.lateral === 'x' ? 0 : 2, rig.forwardAxis === 'x' ? 0 : 2];
   const L = clip.layers[0];
@@ -796,6 +867,89 @@ export function concatClips(a, b, ctx, { blend = 6, fps = 30, name = null } = {}
   out.loop = false;
   out.events = [...a.events, ...b.events.map((e) => ({ ...e, t: e.t + start }))];
   out.meta = { source: 'derived', note: `${a.name} → ${b.name}` };
+  return out;
+}
+
+/**
+ * Play clips one after another the way a game blends them: steps = [{ clip, repeat = 1, blend =
+ * crossfade frames into the next step }]. During a crossfade both clips keep playing. Moves that
+ * travel keep going: each repeat and each next step carries on from where the hips and root got
+ * to. Returns a new clip.
+ */
+export function sequenceClips(steps, ctx, { fps = 30, name = null } = {}) {
+  const rig = ctx.rig;
+  const list = steps.filter((s) => s.clip && s.clip.duration > 0).map((s) => ({ clip: s.clip, repeat: Math.max(1, Math.round(s.repeat || 1)), blend: Math.max(0, s.blend ?? 6) }));
+  if (!list.length) throw new Error('Nothing to play');
+  // Segments on the timeline: each starts `blend` frames before the previous one ends.
+  let t = 0;
+  const segs = list.map((s, i) => {
+    const len = s.clip.duration * s.repeat;
+    const prev = list[i - 1];
+    const B = prev ? Math.min(prev.blend / fps, prev.clip.duration * prev.repeat * 0.5, len * 0.5) : 0;
+    const start = Math.max(0, t - B);
+    t = start + len;
+    return { ...s, start, len, B };
+  });
+  const D = t;
+  // Horizontal travel per cycle of the bones that carry it (root and hips), in their parents' space.
+  const movers = [rig.special.root, rig.special.hips].filter((i, k, a) => i != null && i >= 0 && a.indexOf(i) === k);
+  const upIn = (i) => new THREE.Vector3(0, 1, 0).applyQuaternion((rig.parent[i] < 0 ? rig.baseQ : rig.restWorld.q[rig.parent[i]]).clone().invert());
+  const flat = (v, up) => v.addScaledVector(up, -v.dot(up));
+  const x0 = makeXform(),
+    x1 = makeXform();
+  for (const s of segs) {
+    s.cycle = new Map();
+    for (const i of movers) {
+      evalBone(s.clip, rig.names[i], 0, rig.rest[i], x0);
+      evalBone(s.clip, rig.names[i], s.clip.duration, rig.rest[i], x1);
+      s.cycle.set(i, flat(x1.p.clone().sub(x0.p), upIn(i)));
+    }
+  }
+  // Each step starts where the one before ended (its start offset per bone).
+  const carry = segs.map(() => new Map());
+  for (let k = 1; k < segs.length; k++) {
+    const a = segs[k - 1];
+    for (const i of movers) {
+      evalBone(a.clip, rig.names[i], a.clip.duration, rig.rest[i], x0);
+      const endA = x0.p.clone().add(a.cycle.get(i).clone().multiplyScalar(a.repeat - 1)).add(carry[k - 1].get(i) || new THREE.Vector3());
+      evalBone(segs[k].clip, rig.names[i], 0, rig.rest[i], x1);
+      carry[k].set(i, flat(endA.sub(x1.p), upIn(i)));
+    }
+  }
+  const at = (s, k, bone, i, time, x) => {
+    const local = time - s.start;
+    const rep = Math.min(s.repeat - 1, Math.floor(local / s.clip.duration + 1e-9));
+    const ct = Math.min(s.clip.duration, local - rep * s.clip.duration);
+    evalBone(s.clip, bone, ct, rig.rest[i], x);
+    if (s.cycle.has(i)) x.p.add(s.cycle.get(i).clone().multiplyScalar(rep)).add(carry[k].get(i) || new THREE.Vector3());
+    return x;
+  };
+  const bones = new Set(list.flatMap((s) => [...bonesWithTracks(s.clip)]));
+  const xa = makeXform(),
+    xb = makeXform();
+  const out = denseClip(
+    name || list.map((s) => s.clip.name).join(' → '),
+    D,
+    rig,
+    bones,
+    (bone, i, time, x) => {
+      let k = segs.length - 1;
+      while (k > 0 && time < segs[k].start) k--; // the last step that has started
+      const s = segs[k];
+      const prev = segs[k - 1];
+      // Still inside the crossfade from the step before: both play, this one fades in.
+      if (prev && s.B > 0 && time < prev.start + prev.len) {
+        at(prev, k - 1, bone, i, time, xa);
+        at(s, k, bone, i, time, xb);
+        return blendX(xa, xb, smoothstep((time - s.start) / s.B), x);
+      }
+      return at(s, k, bone, i, Math.min(time, s.start + s.len), x);
+    },
+    fps
+  );
+  out.loop = false;
+  out.events = segs.flatMap((s) => Array.from({ length: s.repeat }, (_, r) => s.clip.events.map((e) => ({ ...e, t: s.start + r * s.clip.duration + e.t }))).flat()).filter((e) => e.t <= D + EPS);
+  out.meta = { source: 'derived', note: `sequence: ${list.map((s) => `${s.clip.name}${s.repeat > 1 ? ` ×${s.repeat}` : ''}`).join(' → ')}` };
   return out;
 }
 

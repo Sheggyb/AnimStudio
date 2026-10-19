@@ -206,6 +206,22 @@ label.check { display: inline-flex; align-items: center; gap: 6px; cursor: point
 .bar > div { height: 100%; border-radius: 4px; }
 .stat { display: flex; justify-content: space-between; font-size: 12.5px; padding: 2px 0; }
 .stat span:first-child { color: var(--text2); }
+/* preview transitions: one row per step */
+.seq-step { display: grid; grid-template-columns: 16px 1fr auto auto 26px; gap: 6px; align-items: center; }
+.seq-step select { min-width: 0; width: 100%; }
+.seq-step label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; }
+.seq-step input[type=number] { width: 48px; }
+.seq-step .seq-off { opacity: .35; }
+.seq-n { font: 11px var(--mono); color: var(--muted); text-align: center; }
+/* feet: when each foot is down */
+.foot-strip { display: flex; flex-direction: column; gap: 3px; }
+.foot-row { display: grid; grid-template-columns: 14px 1fr; gap: 6px; align-items: center; }
+.foot-side { font: 11px var(--mono); color: var(--muted); }
+.foot-lane { position: relative; height: 10px; background: var(--bg2); border-radius: 3px; }
+.foot-down { position: absolute; top: 1px; bottom: 1px; min-width: 3px; background: #2fc4d6; border-radius: 2px; cursor: pointer; }
+.foot-down.slides { background: var(--warn); }
+.foot-down:hover { filter: brightness(1.25); }
+.foot-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #22d3ee; border-radius: 1px; pointer-events: none; box-shadow: 0 0 0 1px var(--panel); }
 
 /* ---------- viewport overlays ---------- */
 .vp-toolbar { position: absolute; top: 8px; left: 8px; display: flex; gap: 4px; padding: 4px; background: #15181fcc; border: 1px solid var(--line); border-radius: 9px; backdrop-filter: blur(6px); flex-wrap: wrap; max-width: calc(100% - 16px); }

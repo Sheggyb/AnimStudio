@@ -110,8 +110,53 @@ async function texturesLoaded(group, timeout = 20000) {
   });
 }
 
-/** Read a .glb/.gltf/.fbx from an ArrayBuffer. */
-export const readModelFile = (buffer, name = '') => (/\.fbx$/i.test(name) ? readFBX(buffer) : readGLTF(buffer));
+/**
+ * BVH motion capture (CMU, Bandai Namco, Truebones, Rokoko exports…) as a glTF-like
+ * { scene, animations }: a skeleton without a mesh and one clip. BVH has no unit: the skeleton's
+ * size says whether it is centimetres, metres or something else, and it is scaled to a person in
+ * metres. Z-up files are stood up.
+ */
+export async function readBVH(source) {
+  const { BVHLoader } = await import('three/addons/loaders/BVHLoader.js');
+  const text = typeof source === 'string' ? source : new TextDecoder().decode(source);
+  const { skeleton, clip } = new BVHLoader().parse(text);
+  // End sites are all called "ENDSITE": name them after their joint (like Mixamo's HeadTop_End).
+  const used = new Set(skeleton.bones.map((b) => b.name));
+  for (const b of skeleton.bones) {
+    if (b.name !== 'ENDSITE') continue;
+    let n = `${b.parent?.name || 'Joint'}_End`;
+    for (let k = 2; used.has(n); k++) n = `${b.parent?.name || 'Joint'}_End${k}`;
+    used.add(n);
+    b.name = n;
+  }
+  const scene = new THREE.Group();
+  const up = new THREE.Group(); // stands Z-up files up; the rig sees it as the skeleton's base
+  up.name = 'BVH';
+  scene.add(up);
+  up.add(skeleton.bones[0]);
+  const size = () => {
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const b of skeleton.bones) box.expandByPoint(b.getWorldPosition(new THREE.Vector3()));
+    return box.getSize(new THREE.Vector3());
+  };
+  let s = size();
+  if (s.z > s.y * 1.5) {
+    up.rotation.x = -Math.PI / 2;
+    s = size();
+  }
+  const H = s.y;
+  const k = H > 20 ? 0.01 : H > 3 || H < 0.5 ? 1.75 / H : 1; // centimetres, odd units (inches…), metres
+  if (k !== 1 && Number.isFinite(k)) {
+    for (const b of skeleton.bones) b.position.multiplyScalar(k);
+    for (const t of clip.tracks) if (t.name.endsWith('.position')) for (let i = 0; i < t.values.length; i++) t.values[i] *= k;
+  }
+  scene.updateMatrixWorld(true);
+  return { scene, animations: [clip] };
+}
+
+/** Read a .glb/.gltf/.fbx/.bvh from an ArrayBuffer. */
+export const readModelFile = (buffer, name = '') => (/\.fbx$/i.test(name) ? readFBX(buffer) : /\.bvh$/i.test(name) ? readBVH(buffer) : readGLTF(buffer));
 
 /**
  * Static models (props, weapons, doors…) have no skeleton. Give them one: a "Root" bone plus

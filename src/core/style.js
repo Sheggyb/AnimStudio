@@ -8,6 +8,7 @@ import { frameTimes, setKey, makeChannel, makeQuatsContinuous } from './channel.
 import { bonesInSet, makeScratchSkeleton } from './rig.js';
 import { solveTwoBone, bendHintFor } from './ik.js';
 import { keyBone } from './keying.js';
+import { plantFeet } from './contacts.js';
 
 const DEG = Math.PI / 180;
 
@@ -26,6 +27,7 @@ export const STYLE_DEFAULTS = {
   smooth: 0, // frames
   life: 0, // degrees of organic noise
   mirror: false,
+  plantFeet: false, // pin the feet while they stand, so they don't slide (contacts.js)
   loop: null, // null = keep the source's setting
 };
 
@@ -178,5 +180,7 @@ export function applyStyle(base, rig, params = {}, { fps = 30 } = {}) {
   if (p.mirror) ops.mirrorClip(c, ctx);
   c.loop = p.loop ?? base.loop;
   if (c.loop && changed && c.duration > 0) ops.loopFix(c, ctx, { frames: 4, fps });
+  // Last, so the stride and posture changes above don't make the feet slide again.
+  if (p.plantFeet && c.duration > 0) plantFeet(c, ctx, { fps });
   return c;
 }

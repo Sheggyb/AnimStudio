@@ -1,7 +1,7 @@
 // Session: opening models, projects, autosave & recovery.
 import { app } from './state.js';
 import { api } from '../io/api.js';
-import { readGLTF, readFBX, buildModel, convertClips } from '../io/loader.js';
+import { readGLTF, readFBX, readBVH, buildModel, convertClips } from '../io/loader.js';
 import { serializeProject, deserializeProject } from '../core/project.js';
 import { makeClip, cloneClip } from '../core/clip.js';
 import { exportGLB } from '../io/exporter.js';
@@ -32,7 +32,9 @@ export async function openModel(source, name, { project = null, skipConfirm = fa
   try {
     if (app.project.dirty && app.model) await autosaveNow();
     const isFBX = typeof source !== 'string' && /\.fbx$/i.test(name);
-    const gltf = isFBX ? await readFBX(source) : await readGLTF(source);
+    const isBVH = typeof source !== 'string' && /\.bvh$/i.test(name); // motion capture: a skeleton, no mesh
+    const gltf = isFBX ? await readFBX(source) : isBVH ? await readBVH(source) : await readGLTF(source);
+    if (isBVH) gltf.animations.forEach((a) => (a.name = name.replace(/\.bvh$/i, '')));
     if (isFBX) gltf.animations = gltf.animations.filter((a) => a.tracks.length && a.duration > 0.1); // FBX "Take 001" / 1-frame stubs
     b.set('Analysing skeleton…');
     const model = buildModel(gltf, name, typeof source === 'string' ? source : null);
