@@ -14,6 +14,7 @@ import { makeClip, makeLayer, cloneClip, getTrack, pruneLayer, TYPES, clipKeyCou
 import { findKey, removeKeys, SMOOTH, LINEAR, EASE, STEP } from '../core/channel.js';
 import { evalBone, makeXform } from '../core/evaluate.js';
 import { keyWeaponPoses, keySupportHand, solveLimbTargets } from './weaponik.js';
+import { makeWeaponClip, holdInClip } from './weaponanim.js';
 import { applyPose } from '../core/evaluate.js';
 import { keyBone } from '../core/keying.js';
 import { anatomicalLocal, bodyOffsetLocal, resolveBone, controllableBones, bodyAxes } from '../core/anatomy.js';
@@ -555,6 +556,16 @@ const H = {
     showLive(app.clips.find((x) => x.id === c.id), poses.length > 1);
     if (poses.length === 1) app.setTime((poses[0].frame ?? 0) / fps());
     return r;
+  },
+
+  async weapon_animation({ action = 'aim', prop = null, clip = null }) {
+    need();
+    const pv = ctxRefs.propView;
+    let r;
+    if (action === 'hold_in_clip' || action === 'aim_in_clip') r = await holdInClip(findClip(clip), { propView: pv, prop, aim: action === 'aim_in_clip' });
+    else r = await makeWeaponClip(action, { propView: pv, prop });
+    showLive(r.clip, true);
+    return { clip: r.clip.name, frames: Math.round(r.clip.duration * fps()), loop: r.clip.loop, out_of_reach: r.out_of_reach };
   },
 
   async key_support_hand({ clip = null, frames = null, prop = null, side = 'L', elbow = 'down', layer = null }) {

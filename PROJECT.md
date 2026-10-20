@@ -45,7 +45,7 @@ For the full user guide, see [README.md](README.md); for what changed recently, 
 | **Editing** | Drag joint dots directly (hands and feet use IK), gizmos, IK, lock feet, mirror and flip, pose library, layers with masks, dope sheet, graph editor, undo/redo |
 | **Modifiers** | Exaggerate, smooth, add life, overlap, ease timing, loop fix, plant feet, mirror, root motion, key reduction (live preview) |
 | **Retargeting** | Moves animation between different skeletons, including Blender Z-up rigs and Mixamo |
-| **Weapons & props** | Sockets `Weapon_R/L/Back`, prop preview (built-in rifle/bazooka/pistol/grenade or any GLB in `props/`) |
+| **Weapons** | Panel on the viewport: pick a weapon (built-in rifle/bazooka/pistol/grenade or any GLB in `props/`), drag it into the hand, one-click Hold / Aim / Fire / Throw clips or carry it in a walk (arms-only layer). Sockets `Weapon_R/L/Back` |
 | **Export** | GLB with model + animations or animations only; presets for Godot, Unity, Unreal, Blender (Godot loop names); travel as is, in place or on the root bone; bake/reduce; events sidecar JSON with speeds |
 | **Feet** | Knows when each foot is down (heel, then ball); *Fix foot sliding* pins planted feet with leg IK, *Add footstep events*; the Clip tab shows sliding, sinking and the speed to move the character at in a game |
 | **Transitions** | *Preview transitions*: Idle → Walk → Run played live the way a game blends them; can become a clip |
@@ -130,7 +130,7 @@ AnimStudio/
 
 ## Testing
 
-- `npm test` runs **63** tests, including foot contacts, root motion, sequences, loops, BVH, engine export and the MCP protocol, plus: rig labelling, IK (incl. pole vectors), layered keying, modifiers, retargeting, gait generation on T-pose rigs, building animation packs, weapon sockets, video-capture conversion round trips, cycle averaging and keep-head-level.
+- `npm test` runs **65** tests, including foot contacts, root motion, sequences, loops, BVH, engine export and the MCP protocol, plus: rig labelling, IK (incl. pole vectors), layered keying, modifiers, retargeting, gait generation on T-pose rigs, building animation packs, weapon sockets, video-capture conversion round trips, cycle averaging and keep-head-level.
 - Tests that need real animation data are *skipped* until the Quaternius packs are in `animations/` (see `tests/helpers.js`); everything else uses a character rigged by AnimStudio and generated motion.
 - The UI is checked with headless-browser runs (chrome-headless-shell) against a second server on another port.
 

@@ -4,6 +4,18 @@ Newest first. "Press F5" after an update means the browser tab must reload to ru
 
 ---
 
+## 1.4.0 — 2026-10-20 — a weapons panel that makes the animations
+
+Press F5 (restart your AI app for the new `weapon_animation` tool).
+
+- **Weapons panel** (toolbar › *Weapons*, Ctrl+Shift+W) instead of the old dialog. It stays open while you turn the camera, play and scrub. Pick a weapon with one click, choose the hand (or the back), and **drag it into place with arrows and rings on the weapon itself**. Weapon sockets are added automatically when a character has none.
+- **One-click weapon animations:** *Hold*, *Aim* and *Fire* (recoil, loops as automatic fire), and *Throw* for grenades. Each is a new clip with a breathing body and both hands on the weapon.
+- **Carry it in a walk or run:** *Hold low* / *Aim* puts the weapon in the arms of the selected clip and keeps its legs (an arms-only *Weapon* layer).
+- **Both hands stay on two-handed weapons**, also on chibi characters with short arms.
+- **The placeholder rifle** has real proportions (it was about 1.4 m long on a human).
+- **Skeleton builder:** big shoulder pads or gloves no longer push the shoulder joints out to the pads (BandanaBot's arms were only half as long as they should be). Rebuild older skeletons of such characters with *Edit skeleton › ↻ Auto-fit › Update skeleton*; clips are kept. The joint guide card no longer covers the end of the toolbar.
+- **AI (MCP):** new `weapon_animation` (hold, aim, fire, throw, hold_in_clip, aim_in_clip).
+
 ## 1.3.0 — 2026-10-20 — a skeleton builder that finds the joints, and fingers
 
 Press F5 (restart your AI app for the new `build_skeleton` option).

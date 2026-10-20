@@ -5,7 +5,8 @@ import * as A from './app/actions.js';
 import * as D from './app/dialogs.js';
 import { OPS, runOp } from './app/oprunner.js';
 import { openModel, saveProject, startAutosave, openProjectJson, confirmDiscard, saveRiggedModel, addWeaponSockets } from './app/session.js';
-import { PropView, propsDialog } from './ui/props.js';
+import { PropView } from './ui/props.js';
+import { WeaponTool } from './ui/weapons.js';
 import { api } from './io/api.js';
 import * as ops from './core/ops.js';
 import { cloneClip, makeClip, getTrack, pruneLayer, makeLayer } from './core/clip.js';
@@ -39,6 +40,7 @@ const bottom = new Bottom($('bottom'));
 const rigBuilder = new RigBuilder(viewport);
 const moveMaker = new MoveMaker(viewport);
 const propView = new PropView(viewport);
+const weaponTool = new WeaponTool(viewport, propView);
 new ClipsPanel($('left'));
 new PosesPanel($('left'));
 
@@ -313,7 +315,7 @@ register(
   { id: 'tools.moveMaker', label: 'Move Maker (add & adjust moves)…', category: 'Tools', keys: ['Ctrl+Shift+M'], enabled: hasModel, run: () => moveMaker.open() },
   { id: 'tools.moveMakerClip', label: 'Adjust current clip in Move Maker…', category: 'Tools', enabled: hasClip, run: () => moveMaker.open({ fromClip: true }) },
   { id: 'tools.buildSkeleton', label: 'Build / edit skeleton (move joints)…', category: 'Tools', enabled: () => hasModel() && !rigBuilder.active, run: () => rigBuilder.open() },
-  { id: 'tools.props', label: 'Weapons & props…', category: 'Tools', keys: ['Ctrl+Shift+W'], enabled: hasModel, run: propsDialog },
+  { id: 'tools.props', label: 'Weapons (hold, aim, fire)', category: 'Tools', keys: ['Ctrl+Shift+W'], enabled: hasModel, checked: () => weaponTool.active, run: () => weaponTool.toggle() },
   { id: 'tools.addSockets', label: 'Add weapon sockets', category: 'Tools', enabled: () => hasModel() && app.rig.humanoid && !['Weapon_R', 'Weapon_L', 'Weapon_Back'].every((n) => app.rig.byName.has(n)), run: () => addWeaponSockets() },
   { id: 'file.saveRigged', label: 'Save rigged model', category: 'File', enabled: hasModel, run: () => saveRiggedModel() },
   ...OPS.map((o) => ({ id: `op.${o.id}`, label: `${o.title}…`, category: 'Tools', enabled: hasClip, run: () => runOp(o) })),
@@ -641,6 +643,8 @@ const toolButtons = [
   toolBtn('Trail', 'view.trail', 'Motion trail of the selected joint'),
   toolBtn('Ghost', 'view.ghostOriginal', 'Compare with the original clip'),
   toolBtn('Weights', 'view.weights', 'Show which vertices the selected bone moves'),
+  h('div', { class: 'vsep' }),
+  toolBtn('Weapons', 'tools.props', 'Weapons: put a gun in a hand, make hold / aim / fire animations'),
 ];
 vpTools.append(...toolButtons);
 const viewButtons = [
@@ -781,4 +785,4 @@ startBridge({ viewport, moveMaker, rigBuilder, bottom, propView });
 api.ping().then(() => D.welcome());
 
 // Debug/automation hook.
-window.__studio = { app, viewport, bottom, run, openModel, ops };
+window.__studio = { app, viewport, bottom, run, openModel, ops, weaponTool };

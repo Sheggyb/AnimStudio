@@ -364,7 +364,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; cursor: point
 .rb-row:hover { background: var(--panel3); }
 .rb-row.on { background: #3b2f0e; }
 
-.rb-guide { position: absolute; right: 8px; top: 8px; width: 270px; z-index: 6; display: flex; gap: 10px; align-items: flex-start; padding: 8px; background: #1a1d25f2; backdrop-filter: blur(6px); }
+.rb-guide { position: absolute; right: 8px; top: 56px; width: 270px; z-index: 6; display: flex; gap: 10px; align-items: flex-start; padding: 8px; background: #1a1d25f2; backdrop-filter: blur(6px); }
 .rb-guide .rb-hint { flex: 1; min-width: 0; }
 .rb-figure { flex: none; display: flex; align-items: center; background: #11141b; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
 .rb-figure-txt { font-size: 12px; line-height: 1.45; display: flex; flex-direction: column; gap: 4px; }
@@ -388,3 +388,20 @@ label.check { display: inline-flex; align-items: center; gap: 6px; cursor: point
 .mm-variants { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px 8px; }
 .mm-variants button { font-size: 11.5px; padding: 1px 7px; border-radius: 99px; }
 .mm-current { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 7px 10px; border-radius: 8px; }
+
+/* Weapons panel */
+.wt-panel { position: absolute; left: 8px; top: 56px; width: 286px; max-height: calc(100% - 64px); overflow-y: auto; z-index: 6; display: flex; flex-direction: column; gap: 10px; background: #1a1d25f2; backdrop-filter: blur(6px); }
+.wt-panel.busy { opacity: 0.7; pointer-events: none; }
+.wt-sec { display: flex; flex-direction: column; gap: 6px; }
+.wt-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
+.wt-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.wt-tile { padding: 8px 4px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-tile.on, .wt-panel button.on { background: #3b2f0e; border-color: #ca8a04; color: #fde68a; }
+.wt-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.wt-act { padding: 9px 4px; font-weight: 600; }
+.wt-panel .seg { display: flex; }
+.wt-panel .seg button { flex: 1; }
+.wt-panel input[type=range] { flex: 1; }
+.wt-num { width: 40px; text-align: right; font-size: 12px; }
+.wt-tip { font-size: 12px; line-height: 1.4; }
+.wt-foot { font-size: 11.5px; line-height: 1.4; border-top: 1px solid var(--line); padding-top: 8px; }

@@ -214,6 +214,7 @@ Rigs with standard bone names (Mixamo `mixamorig:LeftArm`, Unreal `upperarm_l`, 
 | The head stretches, or parts of it (helmet sides, bandana, hair) swing with the arms | The skin was made by an older version, or the head option was off | **Rig tab › ✎ Edit skeleton → Update skeleton** (you don't need to move anything). Check with *Weights* → Head |
 | The character stares at the floor in a walk or run | The source move leans the body and tips the head; on a big head that reads as looking down | ✦ Moves › ✎ Adjust the current clip › **Keep head level** 80–100% (and *Lean* about −8° if hunched) → *Replace* |
 | A joint is in the wrong place (shoulder too high, knees off) | Marker placed off when the skeleton was built | **✎ Edit skeleton**, move the joint, **Update skeleton**. Clips are kept |
+| Chibi/robot arms are very short, the hands can't reach a weapon or each other | Skeletons built before 1.4 put the shoulders at big shoulder pads | **✎ Edit skeleton → ↻ Auto-fit → Update skeleton** (clips are kept), or drag the shoulder dots in to the edge of the body |
 | The character floats or sinks in a move | Clips added before version 1.1 (older retargeting lost the hip motion on Mixamo-rigged characters and misjudged leg length) | Add the move again from ✦ Moves (or ✎ Adjust the current clip › *Replace*): feet now keep the source's ground contact. Fine-tune with *Crouch* or a hips key on *My edits* |
 | The character floats or sinks **in the game** | The model's origin isn't at its feet (Meshy models have it in the middle of the body), and engines stand a character on its origin | Export again with **Feet at ground level, y = 0** (on by default since 1.1) |
 | The feet slide or skate on the floor | The move was made for other legs: the stride no longer fits | **Clip tab › Feet → Fix foot sliding** (or tick *Plant feet* in ✦ Moves). Orange steps in the Feet strip slide |
@@ -224,7 +225,7 @@ Rigs with standard bone names (Mixamo `mixamorig:LeftArm`, Unreal `upperarm_l`, 
 | Ctrl+N opens a browser window | Browsers keep Ctrl+N | New clip is **Shift+N** (or **+ New**) |
 | Changes I was told about don't show | The page still runs the old code | Press **F5** in the AnimStudio tab |
 
-## Weapons & props
+## Weapons
 
 Characters that hold rifles, bazookas and so on get three **socket bones**. Sockets don't bend the mesh; they mark where a weapon goes:
 
@@ -234,11 +235,18 @@ Characters that hold rifles, bazookas and so on get three **socket bones**. Sock
 | `Weapon_L` | left palm | pistol / grenade / second weapon |
 | `Weapon_Back` | behind the chest | holstered weapon |
 
-- Skeletons made with **Build skeleton** have them already. For an older rig use **Tools › Add weapon sockets** (this also saves the rigged model).
-- **Tools › Weapons & props…** (Ctrl+Shift+W) attaches a prop to a socket so you can animate against it. You can use the built-in placeholders (rifle, bazooka, pistol, grenade), any `.glb` in `AnimStudio/props`, or upload one with *From .glb file…*. Fine-tune the position, rotation and scale per prop; the settings are saved in the project.
-- **Prop convention:** origin = where the main hand grips, **+Z** = muzzle, **+Y** = up. Model your weapons (e.g. in Blender) this way and they snap straight into the hand.
+Press **Weapons** in the viewport toolbar (or Ctrl+Shift+W). The panel stays open while you turn the camera, play clips and use the timeline.
+
+1. **Pick a weapon:** Rifle, Pistol, Bazooka, Grenade, any `.glb` in `AnimStudio/props`, or **＋ .glb…** to add your own. It goes in the right hand (a grenade goes in the free hand). Characters without sockets get them automatically.
+2. **Where:** right hand, left hand or on the back.
+3. **Fit it in the hand:** press **✥ Move** or **⟳ Turn** and drag the arrows or rings on the weapon itself; *Size* scales it, *Reset* puts it back.
+4. **Make an animation**, one click each. **Hold** (held low, ready) and **Aim** are breathing loops, **Fire** is an 8-frame recoil that loops as automatic fire, and grenades get **Throw**. The hands are placed on the weapon with IK, the body breathes, and the arms go on a layer called *Weapon*.
+5. **Hold it in a walk or run:** with a walk, run or any clip selected, *Hold low* or *Aim* keeps the clip's legs and body and adds the weapon in the arms (an arms-only *Weapon* layer; Ctrl+Z undoes it).
+
+- Skeletons made with **Build skeleton** have the sockets already. For an older rig use **Tools › Add weapon sockets** (this also saves the rigged model).
+- **Prop convention:** origin = where the main hand grips, **+Z** = muzzle, **+Y** = up. Model your weapons (e.g. in Blender) this way and they snap straight into the hand. Add an empty named `Support` where the other hand holds it to make it two-handed.
 - Props are a **preview only** and are not exported with the character. In the game, attach your weapon scene to the same socket: Godot `BoneAttachment3D` (bone `Weapon_R`), Unity a child of the `Weapon_R` transform, Unreal a socket on that bone.
-- **Weapon animation tip:** put aim / fire / reload on an *override layer* masked to the upper body. The legs then keep the Idle, Run or Jump underneath.
+- If the hands don't reach the weapon (AnimStudio tells you how far off they are), the shoulders are probably too far out: **Rig tab › ✎ Edit skeleton**, drag the shoulder dots in to the edge of the body (or press *↻ Auto-fit*), **Update skeleton**, then make the animation again.
 
 ## ✦ Moves: the sliders
 

@@ -31,8 +31,14 @@ function rifle(u) {
   part(g, tube(0.017 * u, 0.017 * u, 0.04 * u), dark, { p: [0, 0.045 * u, 0.56 * u] }); // muzzle
   part(g, box(0.03 * u, 0.1 * u, 0.045 * u), dark, { p: [0, -0.04 * u, 0.13 * u], r: [12, 0, 0] }); // magazine
   part(g, tube(0.016 * u, 0.016 * u, 0.12 * u), dark, { p: [0, 0.095 * u, 0.1 * u] }); // scope
-  g.userData.support = [0, 0.035 * u, 0.29 * u];
-  g.userData.muzzle = [0, 0.045 * u, 0.58 * u];
+  // Real proportions: about half the character's height long, the front grip in easy reach.
+  const k = 0.66;
+  for (const c of g.children) {
+    c.position.z *= k;
+    c.scale.z *= k;
+  }
+  g.userData.support = [0, 0.035 * u, 0.29 * u * k];
+  g.userData.muzzle = [0, 0.045 * u, 0.58 * u * k];
   return g;
 }
 

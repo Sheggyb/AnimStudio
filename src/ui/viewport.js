@@ -98,11 +98,12 @@ export class Viewport {
     this.scene.add(this.ikProxy);
     g.addEventListener('dragging-changed', (e) => {
       this.orbit.enabled = !e.value;
-      if (this.builder) return this.builder.onGizmo(e.value ? 'start' : 'end');
+      const own = this.builder || this.gizmoOwner; // a tool using the arrows for its own object
+      if (own) return own.onGizmo(e.value ? 'start' : 'end');
       if (e.value) this.onDragStart();
       else this.onDragEnd();
     });
-    g.addEventListener('objectChange', () => (this.builder ? this.builder.onGizmo('move') : this.onDragMove()));
+    g.addEventListener('objectChange', () => (this.builder || this.gizmoOwner ? (this.builder || this.gizmoOwner).onGizmo('move') : this.onDragMove()));
   }
 
   initPicking() {
@@ -446,7 +447,7 @@ export class Viewport {
   }
 
   attachGizmo() {
-    if (this.builder) return;
+    if (this.builder || this.gizmoOwner) return;
     const i = app.sel.active;
     const tool = app.settings.tool;
     this.ikLimb = null;

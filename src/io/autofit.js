@@ -396,6 +396,12 @@ export function autoFind(root, { fingers = true, symmetric = true } = {}) {
       const armD = median(outer) || 1;
       let k = line.findIndex((p, j) => j > outer.length * 0.5 && (thick[j] > armD * 1.9 || Math.abs(p.x - cx) < torsoHalf * 0.9));
       if (k < 0) k = line.length - 1;
+      // A shoulder joint is never far outside the torso. Big shoulder pads or gloves can look like
+      // the torso starting early: then carry on in to just outside the torso's side.
+      if (Math.abs(line[k].x - cx) > torsoHalf * 1.5) {
+        const k2 = line.findIndex((p, j) => j > k && Math.abs(p.x - cx) <= torsoHalf * 1.3);
+        if (k2 > 0) k = k2;
+      }
       const arm = line.slice(0, k + 1).reverse(); // shoulder -> hand tip
       const reach = arm[0].distanceTo(arm[arm.length - 1]);
       if (arm.length >= 6 && reach > 0.18 * H) path = { arm, thick: thick.slice(0, k + 1).reverse() };
