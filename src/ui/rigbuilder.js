@@ -344,11 +344,13 @@ export class RigBuilder {
         check('Fingers', 'Add finger bones: three per finger, five fingers per hand', this.fingers, (on) => this.setFingers(on))
       ),
       this.fingerNote,
-      h('div', { class: 'rb-body' }, h('div', { class: 'row', style: { alignItems: 'flex-start', gap: '10px' } }, this.figure, this.hint), this.list),
+      h('div', { class: 'rb-body' }, this.list),
       check('Head moves as one piece (no stretching)', 'Everything above the neck follows the Head bone only, so the head turns and nods without stretching. Untick for soft heads (faces that should squash).', this.rigidHead !== false, (on) => (this.rigidHead = on)),
       h('div', { class: 'row' }, h('button', { class: 'grow', onclick: () => this.close() }, 'Cancel'), h('button', { class: 'primary grow', onclick: () => this.build() }, this.editing ? 'Update skeleton' : 'Build skeleton'))
     );
-    document.getElementById('center').append(this.panel);
+    // Which joint is being placed: a fixed card on the viewport, so it stays in sight while the list scrolls.
+    this.guide = h('div', { class: 'rb-guide card' }, this.figure, this.hint);
+    document.getElementById('center').append(this.panel, this.guide);
     this.updateFingerNote();
   }
 
@@ -660,7 +662,8 @@ export class RigBuilder {
     }
     this.tip?.remove();
     this.panel?.remove();
-    this.panel = this.list = this.hint = null;
+    this.guide?.remove();
+    this.panel = this.guide = this.list = this.hint = null;
     vp.builder = null;
     vp.overlay.visible = true;
     this.active = false;
